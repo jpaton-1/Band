@@ -327,18 +327,19 @@
             animate(); 
         }
 
-        if (startArButton) {
-            startArButton.addEventListener('click', () => {
-                if (startExperienceUI) startExperienceUI.style.display = 'none';
-                if (loadingMessage) loadingMessage.style.display = 'block';
-                requestPermissionsAndStart().catch(err => {
-                    console.error("Error in requestPermissionsAndStart chain:", err);
-                    if(loadingMessage) loadingMessage.innerHTML = "Failed to start experience: " + err.message;
-                });
-            });
-        } else { console.error("Start Button not found!"); }
-
+if (startArButton) {
+    startArButton.addEventListener('click', () => {
+        if (startExperienceUI) startExperienceUI.style.display = 'none';
+        if (loadingMessage) loadingMessage.style.display = 'block';
+        requestPermissionsAndStart().catch(err => {
+            console.error("Error in requestPermissionsAndStart chain:", err);
+            if (loadingMessage) loadingMessage.innerHTML = "Failed to start experience: " + err.message;
         });
+    });
+} else { 
+    console.error("Start Button not found!"); 
+}
+
     </script>
 </body>
 </html>
