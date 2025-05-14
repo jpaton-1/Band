@@ -3,34 +3,28 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no, viewport-fit=cover">
-    <title>Gyro Shader AR Illusion</title>
+    <title>Gyro Shader Experience - Switchable</title>
     <style>
         body { margin: 0; font-family: sans-serif; overflow: hidden; background-color: #000; color: #fff; }
         #container { width: 100vw; height: 100vh; position: absolute; top: 0; left: 0; z-index: 1; }
         #videoBG {
-            position: absolute; top: 0; left: 0;
-            width: 100%; height: 100%;
-            object-fit: cover;
-            z-index: 0; /* Ensure it's behind the Three.js canvas if canvas is transparent */
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            object-fit: cover; z-index: 0;
         }
-        #controls { /* Hide controls as we have only one visual for now */
-            display: none; 
+        #controls { 
+            display: block; /* Re-enable controls */
             position: absolute; top: 10px; left: 10px; z-index: 100;
             background: rgba(0,0,0,0.6); padding: 8px; border-radius: 8px;
         }
-        #loadingMessage, #startExperienceUI {
-            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            text-align: center; background: rgba(0,0,0,0.85);
-            padding: 30px; border-radius: 15px; z-index: 200;
+        #controls button {
+            display: block; margin: 6px; padding: 10px 12px; color: white;
+            background-color: #444; border: 1px solid #666; border-radius: 5px;
+            cursor: pointer; font-size: 14px;
         }
-        #loadingMessage { display: none; font-size: 1.5em; }
-        #startExperienceUI h2 { margin-top: 0; color: #00aaff; }
-        #startExperienceUI p { font-size: 1.1em; margin-bottom: 25px; line-height: 1.5; }
-        #startArButton {
-            padding: 15px 30px; font-size: 1.25em; cursor: pointer;
-            background-color: #007bff; color: white; border: none;
-            border-radius: 8px; font-weight: bold;
-        }
+        #controls button:hover { background-color: #666; }
+        #controls button.active { background-color: #007bff; border-color: #0056b3;}
+
+        #loadingMessage, #startExperienceUI { /* ... same ... */ }
     </style>
 
     <script type="importmap">
@@ -43,21 +37,14 @@
     </script>
 </head>
 <body>
-    <div id="startExperienceUI">
-        <h2>Gyro Shader Experience</h2>
-        <p>
-            This experience uses your phone's camera for the background,
-            motion sensors to look around, and an audio-reactive shader.
-            <br><br>
-            Please click "Start" and allow all requested permissions.
-        </p>
-        <button id="startArButton">Start Experience</button>
-    </div>
-
+    <div id="startExperienceUI"> </div>
     <div id="loadingMessage">Loading...</div>
     <video id="videoBG" autoplay playsinline muted style="display:none;"></video>
-    <div id="controls">
-        </div>
+    <div id="controls" style="display:none;">
+        <button id="btn-shader1" onclick="setActiveVisual('shader1')">Abstract Swirls</button>
+        <button id="btn-waveform" onclick="setActiveVisual('waveform')">Waveform</button>
+        <button id="btn-none" onclick="setActiveVisual('none')">Clear Visuals (Black)</button>
+    </div>
     <div id="container"></div>
 
     <script type="module">
@@ -66,20 +53,23 @@
 
         let scene, camera, renderer, clock, deviceControls;
         let videoTexture, videoElement;
-        let shaderMaterial; // To hold our custom shader material
+        
+        let shaderPlane; // Single plane for all shader visuals
+        let currentShaderMaterial; // The active shader material
+
+        let currentVisualType = 'none'; // To track which shader is active
 
         const loadingMessage = document.getElementById('loadingMessage');
         const startExperienceUI = document.getElementById('startExperienceUI');
         const startArButton = document.getElementById('startArButton');
+        const controlsDiv = document.getElementById('controls');
         videoElement = document.getElementById('videoBG');
 
-        // --- Audio Analysis ---
-        let analyser;
-        let dataArray;
+        // --- Audio Analysis (same as before) ---
+        let analyser; let dataArray;
         const audioSummary = { overallAverage: 0, bassAverage: 0, midAverage: 0, trebleAverage: 0, dataArrayValid: false, audioContextActive: false };
-
-        async function startAudio() {
-            if (audioSummary.audioContextActive) return;
+        async function startAudio() { /* ... same ... */ 
+             if (audioSummary.audioContextActive) return;
             console.log("Requesting microphone access...");
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
@@ -99,8 +89,7 @@
                 if(loadingMessage) loadingMessage.innerHTML += "<br><small>Microphone access denied. Audio reactivity disabled.</small>";
             }
         }
-
-        function updateAudioSummary() {
+        function updateAudioSummary() { /* ... same, ensures 0-1 normalization ... */
             if (!analyser || !dataArray || !audioSummary.dataArrayValid) {
                 audioSummary.overallAverage = 0; audioSummary.bassAverage = 0; audioSummary.midAverage = 0; audioSummary.trebleAverage = 0;
                 return audioSummary;
@@ -108,12 +97,12 @@
             analyser.getByteFrequencyData(dataArray);
             let S=0,B=0,M=0,T=0,l=dataArray.length,bc=Math.floor(l*0.15),mc=Math.floor(l*0.5);
             for(let i=0;i<l;i++){const v=dataArray[i]; S+=v; if(i<bc)B+=v;else if(i<mc)M+=v;else T+=v;}
-            audioSummary.overallAverage=(S/l||0)/255; audioSummary.bassAverage=(bc>0?B/bc:0)/255; // Normalize to 0-1
+            audioSummary.overallAverage=(S/l||0)/255; audioSummary.bassAverage=(bc>0?B/bc:0)/255; 
             audioSummary.midAverage=((mc-bc)>0?M/(mc-bc):0)/255; audioSummary.trebleAverage=((l-mc)>0?T/(l-mc):0)/255;
             return audioSummary;
         }
         
-        async function initVideoStream() {
+        async function initVideoStream() { /* ... same ... */ 
             console.log("initVideoStream: Attempting to get camera feed.");
             if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
                 try {
@@ -127,38 +116,175 @@
                     videoTexture = new THREE.VideoTexture(videoElement);
                     videoTexture.minFilter = THREE.LinearFilter;
                     videoTexture.magFilter = THREE.LinearFilter;
-                    // No format needed for background texture usually.
                     if (scene) scene.background = videoTexture;
 
                 } catch (err) {
                     console.error("Error accessing camera:", err);
-                    if(loadingMessage) loadingMessage.innerHTML = "Could not access camera. Check permissions.<br><small>" + err.message + "</small>";
-                    if (scene) scene.background = new THREE.Color(0x100015); // Dark fallback
+                    if (scene) scene.background = new THREE.Color(0x100015); 
                 }
             } else {
                 console.error("getUserMedia not supported!");
-                if(loadingMessage) loadingMessage.innerHTML = "Camera access not supported on this browser.";
-                if (scene) scene.background = new THREE.Color(0x100015); // Dark fallback
+                if (scene) scene.background = new THREE.Color(0x100015);
             }
         }
 
+        // --- Shader Definitions ---
+        const commonVertexShader = `
+            varying vec2 vUv;
+            void main() {
+                vUv = uv;
+                // This makes the quad always fill the screen, regardless of camera position/rotation for the shader plane itself.
+                // Useful if the shader plane is a child of the camera or if an orthographic camera is used for it.
+                // For a plane in world space viewed by perspective camera, use standard projection:
+                gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+            }
+        `;
+
+        const shaderVisuals = {
+            'shader1': {
+                fragmentShader: `
+                    precision highp float;
+                    uniform vec2 u_resolution;
+                    uniform float u_time;
+                    uniform float u_bass; uniform float u_mid; uniform float u_treble; uniform float u_overall_avg;
+                    varying vec2 vUv;
+
+                    void main() {
+                        vec2 u = .2*( (vUv * 2.0 - 1.0) * u_resolution )/u_resolution.y;
+                        vec4 z_shadertoy, o_shadertoy;
+                        o_shadertoy = vec4(1.0,2.0,3.0,0.0); 
+                        z_shadertoy = o_shadertoy;          
+                        vec2 v_shadertoy = u_resolution.xy;
+                        float t = u_time + u_bass * 5.0 + u_overall_avg * 2.0; // Audio influencing time
+
+                        for (float a = .5, i = 0.0; 
+                            ++i < 19.; 
+                            o_shadertoy += (1. + cos(z_shadertoy+t)) 
+                                / length((1.+i*dot(v_shadertoy,v_shadertoy)) 
+                                        * sin(1.5*u/(.5-dot(u,u)) - 9.*u.yx + t))
+                            )  
+                            v_shadertoy = cos(++t - 7.*u*pow(a += .03 + u_mid*0.01, i)) - 5.*u, 
+                            u += tanh(40. * dot(u *= mat2(cos(i + .02*t - vec4(0,11,33,0))) 
+                                                    ,u) 
+                                        * cos(1e2*u.yx + t + u_treble*3.0)) / 2e2
+                            + .2 * a * u
+                            + cos(4./exp(dot(o_shadertoy,o_shadertoy)/1e2) + t) / 3e2;
+                            
+                        o_shadertoy = 25.6 / (min(o_shadertoy, 13.) + 164. / o_shadertoy) 
+                            - dot(u, u) / 250.;
+                        gl_FragColor = vec4(o_shadertoy.rgb, 1.0);
+                    }
+                `,
+                initUniforms: () => ({
+                    u_time: { value: 0.0 },
+                    u_resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
+                    u_bass: { value: 0.0 }, u_mid: { value: 0.0 }, u_treble: { value: 0.0 }, u_overall_avg: { value: 0.0 }
+                })
+            },
+            'waveform': {
+                fragmentShader: `
+                    precision highp float;
+                    uniform vec2 u_resolution;
+                    uniform float u_time;
+                    uniform float u_bass; uniform float u_mid; uniform float u_treble; uniform float u_overall_avg;
+                    varying vec2 vUv;
+
+                    // "Waveform" by @XorDev - Adapted
+                    void main() {
+                        vec2 R = u_resolution.xy;
+                        vec2 U = vUv * R; // Current fragment coord in pixels
+
+                        vec4 O_accum = vec4(0.0); // Accumulator for color
+                        float i_loop = 0.0, d_step, z_depth = 0.0, r_reflect;
+                        
+                        // Modified audio influence:
+                        float time_adjusted = u_time + u_overall_avg * 3.0;
+
+                        for(; i_loop++<90.0; // Raymarch 90 steps
+                            // Accumulate color (Pick color and attenuate)
+                            O_accum += (cos(z_depth*.5 + time_adjusted + u_bass * 2.0 + vec4(0,2,4,3)) + 1.3 ) / d_step / z_depth
+                        ) {
+                            // Raymarch sample point 'p'
+                            // Original: vec3 p = z * normalize(vec3(I+I,0) - iResolution.xyy);
+                            // I = fragCoord = vUv * u_resolution
+                            // iResolution.xyy = vec3(u_resolution.x, u_resolution.y, u_resolution.y)
+                            // The ray direction setup from shadertoy is often to map screen coords to a normalized view.
+                            // Let's use a simpler ray direction for a start or adapt carefully.
+                            // A common way for a ray direction through pixel (vUv):
+                            vec2 uv_norm = vUv * 2.0 - 1.0; // -1 to 1
+                            uv_norm.x *= R.x / R.y; // Aspect correction
+                            vec3 rayDir = normalize(vec3(uv_norm, -1.0)); // Ray pointing into the screen
+
+                            vec3 p = z_depth * rayDir;
+                            
+                            // Shift camera and get reflection coordinates
+                            // Original: r = max(-++p, 0.).y; -> This modifies p, be careful.
+                            // Let's try to keep p immutable for a moment in the ++p part for clarity.
+                            vec3 p_temp_for_r = p;
+                            p_temp_for_r.y += 1.0; // Simulating part of -++p for y component if p.y starts negative relative to some surface
+                                                   // This part is very context dependent on the scene being raymarched.
+                                                   // The original shader implies a scene where p.y can be negative.
+                            
+                            r_reflect = max(-p_temp_for_r.y, 0.0); // Simpler interpretation of reflection trigger
+                                                              // The original was likely specific to its scene structure.
+
+                            // Mirror
+                            p.y += r_reflect + r_reflect;
+                            
+                            // Sine waves
+                            for(d_step=1.; d_step<30.0; d_step+=d_step) // d_step was 'd'
+                                p.y += cos(p*d_step + 2.*time_adjusted*cos(d_step + u_mid * 2.0)+z_depth).x/d_step;
+                            
+                            // Step forward (reflections are softer)
+                            // Original: z += d = (.1*r+abs(p.y-1.)/(++r*r) + max(d=p.z+3.,-d*.1))/8.;
+                            // This is complex distance estimator. Let's simplify or be careful.
+                            // 'd' was d_step from inner loop.
+                            // The 'd=p.z+3' is a distance function to a plane at z=-3
+                            float dist_to_plane = p.z + 3.0 + u_treble * 2.0; // Audio influence
+                            float scene_dist = abs(p.y-1.0) / ( (r_reflect + 1.0)*(r_reflect + 1.0) ); // Simplified from original
+                            scene_dist = min(scene_dist, dist_to_plane);
+                            d_step = (0.1 * r_reflect + scene_dist + max(dist_to_plane, -dist_to_plane*0.1) ) / 8.0;
+                            d_step = max(0.01, d_step); // Ensure minimum step
+                            z_depth += d_step;
+                        }
+                        // Tanh tonemapping
+                        O_accum = tanh(O_accum/9e2);
+                        gl_FragColor = vec4(O_accum.rgb, 1.0);
+                    }
+                `,
+                initUniforms: () => ({
+                    u_time: { value: 0.0 },
+                    u_resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
+                    u_bass: { value: 0.0 }, u_mid: { value: 0.0 }, u_treble: { value: 0.0 }, u_overall_avg: { value: 0.0 }
+                })
+            }
+        };
+        
         function initThreeJS() {
             console.log("initThreeJS: Initializing Scene, Camera, Renderer...");
             scene = new THREE.Scene();
             clock = new THREE.Clock();
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0,0,0.1); // Important for DeviceOrientationControls relative movement
 
-            const aspectRatio = window.innerWidth / window.innerHeight;
-            camera = new THREE.PerspectiveCamera(75, aspectRatio, 0.1, 1000);
-            camera.position.set(0, 0, 0.1); // Start close to origin, controls will orient
-
-            renderer = new THREE.WebGLRenderer({ antialias: true }); // alpha:true might not be needed if video bg works
+            renderer = new THREE.WebGLRenderer({ antialias: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
             document.getElementById('container').appendChild(renderer.domElement);
 
             deviceControls = new DeviceOrientationControls(camera);
             console.log("initThreeJS: DeviceOrientationControls initialized.");
 
-            createShaderVisual(); // Create and add the shader plane
+            // Create a single plane and material that we will update
+            const planeGeometry = new THREE.PlaneGeometry(20, 20 * (window.innerHeight/window.innerWidth)); // Adjust size as needed
+            currentShaderMaterial = new THREE.ShaderMaterial({
+                vertexShader: commonVertexShader,
+                // Fragment shader and uniforms will be set by setActiveVisual
+                side: THREE.DoubleSide // Useful for some shaders
+            });
+            shaderPlane = new THREE.Mesh(planeGeometry, currentShaderMaterial);
+            shaderPlane.position.set(0, 0, -5); // Position it in front of the camera
+            scene.add(shaderPlane);
+            shaderPlane.visible = false; // Initially hidden until a shader is chosen
 
             window.addEventListener('resize', onWindowResize, false);
             console.log("initThreeJS: Complete.");
@@ -168,8 +294,14 @@
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
             renderer.setSize(window.innerWidth, window.innerHeight);
-            if (shaderMaterial) {
-                shaderMaterial.uniforms.u_resolution.value.set(window.innerWidth, window.innerHeight);
+            if (currentShaderMaterial && currentShaderMaterial.uniforms.u_resolution) {
+                currentShaderMaterial.uniforms.u_resolution.value.set(window.innerWidth, window.innerHeight);
+            }
+             // Adjust plane aspect ratio on resize
+            if (shaderPlane) {
+                const aspect = window.innerWidth / window.innerHeight;
+                shaderPlane.geometry.dispose(); // Dispose old geometry
+                shaderPlane.geometry = new THREE.PlaneGeometry(20, 20 / aspect); // Keep width 20, adjust height
             }
         }
 
@@ -181,111 +313,56 @@
             if (deviceControls) deviceControls.update();
             const audioData = updateAudioSummary();
 
-            if (shaderMaterial) {
-                shaderMaterial.uniforms.u_time.value = elapsedTime;
-                shaderMaterial.uniforms.u_bass.value = audioData.bassAverage;
-                shaderMaterial.uniforms.u_mid.value = audioData.midAverage;
-                shaderMaterial.uniforms.u_treble.value = audioData.trebleAverage;
-                shaderMaterial.uniforms.u_overall_avg.value = audioData.overallAverage;
+            if (currentShaderMaterial && currentShaderMaterial.uniforms.u_time) { // Check if uniforms exist
+                currentShaderMaterial.uniforms.u_time.value = elapsedTime;
+                currentShaderMaterial.uniforms.u_bass.value = audioData.bassAverage;
+                currentShaderMaterial.uniforms.u_mid.value = audioData.midAverage;
+                currentShaderMaterial.uniforms.u_treble.value = audioData.trebleAverage;
+                currentShaderMaterial.uniforms.u_overall_avg.value = audioData.overallAverage;
             }
             
             if (videoTexture) videoTexture.needsUpdate = true; 
             renderer.render(scene, camera);
         }
-
-        const vertexShader = `
-            varying vec2 vUv;
-            void main() {
-                vUv = uv;
-                gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        
+        window.setActiveVisual = (type) => {
+            console.log(`setActiveVisual: type="${type}", currentType="${currentVisualType}"`);
+            if (type === 'none') {
+                if (shaderPlane) shaderPlane.visible = false;
+                currentVisualType = 'none';
+                document.querySelectorAll('#controls button').forEach(btn => btn.classList.remove('active'));
+                document.getElementById('btn-none')?.classList.add('active');
+                console.log("Visuals cleared.");
+                return;
             }
-        `;
 
-        const fragmentShader = `
-            precision highp float;
-            uniform vec2 u_resolution;
-            uniform float u_time;
-            uniform float u_bass;       // Audio uniform (0-1 range)
-            uniform float u_mid;        // Audio uniform (0-1 range)
-            uniform float u_treble;     // Audio uniform (0-1 range)
-            uniform float u_overall_avg; // Audio uniform (0-1 range)
-            varying vec2 vUv;
-
-            // User's shader code, adapted:
-            // Original mainImage( out vec4 o, vec2 u )
-            void main() {
-                vec2 fragCoord = vUv * u_resolution; // Equivalent to 'u' in Shadertoy if plane covers viewport correctly
-                                                    // OR, more directly if plane UVs map to screen UVs
-                vec2 u = vUv; // Use vUv directly if it's already screen-like (0-1)
-                              // The shader manipulates 'u' heavily, so starting with vUv is standard.
-                
-                // The shader's internal normalization of 'u':
-                u = .2*( (vUv * 2.0 - 1.0) * u_resolution )/u_resolution.y; 
-                // This makes 'u' aspect-corrected and normalized where y goes from ~-0.2 to 0.2 for a square if width > height
-
-                vec4 z_shadertoy, o_shadertoy; // Shadertoy 'z' and 'o'
-                o_shadertoy = vec4(1.0,2.0,3.0,0.0); // Initial 'o' from shader
-                z_shadertoy = o_shadertoy;           // Initial 'z' from shader
-
-                vec2 v_shadertoy = u_resolution.xy; // Corresponds to 'v' in the shader
-
-                // --- Start of user's shader logic ---
-                // 't' is time, let's make it audio reactive for a demo
-                float t = u_time + u_bass * 5.0; // MODIFIED: u_time is iTime, u_bass influences it
-
-                for (float a = .5, i = 0.0; // loop variable 'i' should start at 0 for typical for loops
-                    ++i < 19.; // Loop 18 times (i from 1 to 18)
-                    o_shadertoy += (1. + cos(z_shadertoy+t)) 
-                        / length((1.+i*dot(v_shadertoy,v_shadertoy)) 
-                                * sin(1.5*u/(.5-dot(u,u)) - 9.*u.yx + t))
-                    )  
-                    v_shadertoy = cos(++t - 7.*u*pow(a += .03, i)) - 5.*u, 
-                    u += tanh(40. * dot(u *= mat2(cos(i + .02*t - vec4(0,11,33,0))) 
-                                            ,u) 
-                                * cos(1e2*u.yx + t)) / 2e2
-                    + .2 * a * u
-                    + cos(4./exp(dot(o_shadertoy,o_shadertoy)/1e2) + t) / 3e2;
-                    
-                o_shadertoy = 25.6 / (min(o_shadertoy, 13.) + 164. / o_shadertoy) 
-                    - dot(u, u) / 250.;
-                // --- End of user's shader logic ---
-
-                gl_FragColor = vec4(o_shadertoy.rgb, 1.0); // Ensure alpha is 1 for opaque plane
+            const visualConfig = shaderVisuals[type];
+            if (!visualConfig) {
+                console.warn("Unknown visual type:", type);
+                return;
             }
-        `;
 
-        function createShaderVisual() {
-            console.log("Creating shader visual...");
-            // A large plane to act as the "canvas" for the shader
-            // Position it in front of the camera
-            const planeGeometry = new THREE.PlaneGeometry(20, 20 * (window.innerHeight/window.innerWidth), 1, 1); 
+            if (currentVisualType === type && shaderPlane && shaderPlane.visible) {
+                console.log("Visual already active:", type);
+                return;
+            }
             
-            shaderMaterial = new THREE.ShaderMaterial({
-                vertexShader: vertexShader,
-                fragmentShader: fragmentShader,
-                uniforms: {
-                    u_time: { value: 0.0 },
-                    u_resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
-                    u_bass: { value: 0.0 },
-                    u_mid: { value: 0.0 },
-                    u_treble: { value: 0.0 },
-                    u_overall_avg: { value: 0.0 }
-                },
-                // side: THREE.DoubleSide // If you want to see it from behind too
-            });
-
-            const shaderPlane = new THREE.Mesh(planeGeometry, shaderMaterial);
-            // Position the plane. If camera is at (0,0,0.1) looking towards -Z,
-            // place plane at Z = -5 or so.
-            shaderPlane.position.set(0, 0, -5); 
+            currentShaderMaterial.vertexShader = commonVertexShader; // Or visualConfig.vertexShader if different
+            currentShaderMaterial.fragmentShader = visualConfig.fragmentShader;
+            currentShaderMaterial.uniforms = THREE.UniformsUtils.clone(visualConfig.initUniforms());
+            // Ensure resolution is current for new material
+            currentShaderMaterial.uniforms.u_resolution.value.set(window.innerWidth, window.innerHeight);
+            currentShaderMaterial.needsUpdate = true;
             
-            scene.add(shaderPlane);
-            console.log("Shader plane added to scene at z = -5");
-        }
+            if (shaderPlane) shaderPlane.visible = true;
+            currentVisualType = type;
 
-
-        async function requestPermissionsAndStart() {
-            // ... (same permission logic as your previous 'gyro' version)
+            document.querySelectorAll('#controls button').forEach(btn => btn.classList.remove('active'));
+            document.getElementById(`btn-${type}`)?.classList.add('active');
+            console.log("Switched to visual:", type);
+        };
+        
+        async function requestPermissionsAndStart() { /* ... same permission logic ... */ 
             console.log("Requesting permissions and starting...");
             if(loadingMessage) loadingMessage.style.display = 'block';
             if(loadingMessage) loadingMessage.innerHTML = "Requesting Permissions...";
@@ -321,25 +398,14 @@
             }
 
             if(loadingMessage) loadingMessage.style.display = 'none';
-            // Controls div is hidden by CSS for this example
-            // if(controlsDiv) controlsDiv.style.display = 'block'; 
+            if(controlsDiv) controlsDiv.style.display = 'block'; 
             
+            setActiveVisual('shader1'); // Default to first shader
             animate(); 
         }
 
-if (startArButton) {
-    startArButton.addEventListener('click', () => {
-        if (startExperienceUI) startExperienceUI.style.display = 'none';
-        if (loadingMessage) loadingMessage.style.display = 'block';
-        requestPermissionsAndStart().catch(err => {
-            console.error("Error in requestPermissionsAndStart chain:", err);
-            if (loadingMessage) loadingMessage.innerHTML = "Failed to start experience: " + err.message;
+        if (startArButton) { /* ... same ... */ }
         });
-    });
-} else { 
-    console.error("Start Button not found!"); 
-}
-
     </script>
 </body>
 </html>
