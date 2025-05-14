@@ -2,420 +2,247 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no, viewport-fit=cover">
-    <title>Gyro Shader Experience - Switchable V2</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Last Ditch Fireworks!</title>
     <style>
-        body { margin: 0; font-family: sans-serif; overflow: hidden; background-color: #000; color: #fff; }
-        #container { width: 100vw; height: 100vh; position: absolute; top: 0; left: 0; z-index: 1; }
-        #videoBG {
-            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            object-fit: cover; z-index: 0;
+        body { margin: 0; overflow: hidden; background-color: #000000; color: white; font-family: sans-serif; }
+        #info { position: absolute; top: 10px; width: 100%; text-align: center; z-index: 100; padding: 5px; background: rgba(0,0,0,0.3); }
+        #permissionOverlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background-color: rgba(0,0,0,0.9); color: white;
+            display: none; /* Initially hidden */
+            flex-direction: column; justify-content: center; align-items: center;
+            text-align: center; z-index: 200; padding: 20px; box-sizing: border-box;
         }
-        #controls { 
-            display: block; 
-            position: absolute; top: 10px; left: 10px; z-index: 100;
-            background: rgba(0,0,0,0.6); padding: 8px; border-radius: 8px;
-        }
-        #controls button {
-            display: block; margin: 6px; padding: 10px 12px; color: white;
-            background-color: #444; border: 1px solid #666; border-radius: 5px;
-            cursor: pointer; font-size: 14px;
-        }
-        #controls button:hover { background-color: #666; }
-        #controls button.active { background-color: #007bff; border-color: #0056b3;}
-
-        #loadingMessage, #startExperienceUI {
-            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            text-align: center; background: rgba(0,0,0,0.85);
-            padding: 30px; border-radius: 15px; z-index: 200;
-        }
-        #loadingMessage { display: none; font-size: 1.5em; }
-        #startExperienceUI h2 { margin-top: 0; color: #00aaff; }
-        #startExperienceUI p { font-size: 1.1em; margin-bottom: 25px; line-height: 1.5; }
-        #startArButton {
-            padding: 15px 30px; font-size: 1.25em; cursor: pointer;
-            background-color: #007bff; color: white; border: none;
-            border-radius: 8px; font-weight: bold;
+        #permissionButton {
+            padding: 15px 30px; font-size: 1.2em; color: white;
+            background-color: #007bff; border: none; border-radius: 5px; cursor: pointer; margin-top: 20px;
         }
     </style>
-
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/0.151.0/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.151.0/examples/js/controls/DeviceOrientationControls.js"></script>
-    </head>
+</head>
 <body>
-    <div id="startExperienceUI">
-        <h2>Gyro Shader Experience</h2>
-        <p>
-            This experience uses your phone's camera for the background,
-            motion sensors to look around, and an audio-reactive shader.
-            <br><br>
-            Please click "Start" and allow all requested permissions.
-        </p>
-        <button id="startArButton">Start Experience</button>
+    <div id="info">Tap screen for fireworks! (Allow motion sensors if asked)</div>
+    <div id="permissionOverlay">
+        <h2>Motion Sensors Needed</h2>
+        <p>This experience uses device orientation to look around. Please grant permission.</p>
+        <button id="permissionButton">Allow Motion Sensors</button>
     </div>
 
-    <div id="loadingMessage">Loading...</div>
-    <video id="videoBG" autoplay playsinline muted style="display:none;"></video>
-    <div id="controls" style="display:none;">
-        <button id="btn-shader1" onclick="setActiveVisual('shader1')">Abstract Swirls</button>
-        <button id="btn-waveform" onclick="setActiveVisual('waveform')">Waveform</button>
-        <button id="btn-none" onclick="setActiveVisual('none')">Clear Visuals (Black)</button>
-    </div>
-    <div id="container"></div>
+    <script>
+        let scene, camera, renderer, controls;
+        let fireworksParticles, fireworksMaterial;
+        const clock = new THREE.Clock();
 
-    <script type="module">
-        // MODIFICATION: Removed import statements for THREE and DeviceOrientationControls
-        // import * as THREE from 'three';
-        // import { DeviceOrientationControls } from 'three/addons/controls/DeviceOrientationControls.js';
+        const PARTICLE_COUNT = 1000; // Number of particles per explosion
+        const PARTICLE_LIFESPAN = 2.5; // Seconds
+        const PARTICLE_GRAVITY = 0.5;
 
-        // THREE and THREE.DeviceOrientationControls will be available globally from the script tags in <head>
+        function init() {
+            // Scene setup
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.z = 5;
 
-        let scene, camera, renderer, clock, deviceControls;
-        let videoTexture, videoElement;
-        
-        let shaderPlane; 
-        let currentShaderMaterial; 
-
-        let currentVisualType = 'none'; 
-
-        const loadingMessage = document.getElementById('loadingMessage');
-        const startExperienceUI = document.getElementById('startExperienceUI');
-        const startArButton = document.getElementById('startArButton');
-        const controlsDiv = document.getElementById('controls');
-        videoElement = document.getElementById('videoBG');
-
-        let analyser; let dataArray;
-        const audioSummary = { overallAverage: 0, bassAverage: 0, midAverage: 0, trebleAverage: 0, dataArrayValid: false, audioContextActive: false };
-        
-        async function startAudio() { 
-            if (audioSummary.audioContextActive) return;
-            console.log("Requesting microphone access...");
-            try {
-                const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-                const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-                const source = audioContext.createMediaStreamSource(stream);
-                analyser = audioContext.createAnalyser();
-                analyser.fftSize = 256; 
-                analyser.smoothingTimeConstant = 0.7;
-                source.connect(analyser);
-                const bufferLength = analyser.frequencyBinCount;
-                dataArray = new Uint8Array(bufferLength);
-                audioSummary.dataArrayValid = true;
-                audioSummary.audioContextActive = true;
-                console.log("Microphone access granted and analyser active.");
-            } catch (err) {
-                console.error("Error accessing microphone:", err);
-                if(loadingMessage) loadingMessage.innerHTML += "<br><small>Microphone access denied. Audio reactivity disabled.</small>";
-            }
-        }
-
-        function updateAudioSummary() {
-            if (!analyser || !dataArray || !audioSummary.dataArrayValid) {
-                audioSummary.overallAverage = 0; audioSummary.bassAverage = 0; audioSummary.midAverage = 0; audioSummary.trebleAverage = 0;
-                return audioSummary;
-            }
-            analyser.getByteFrequencyData(dataArray);
-            let S=0,B=0,M=0,T=0,l=dataArray.length,bc=Math.floor(l*0.15),mc=Math.floor(l*0.5);
-            for(let i=0;i<l;i++){const v=dataArray[i]; S+=v; if(i<bc)B+=v;else if(i<mc)M+=v;else T+=v;}
-            audioSummary.overallAverage=(S/l||0)/255; audioSummary.bassAverage=(bc>0?B/bc:0)/255; 
-            audioSummary.midAverage=((mc-bc)>0?M/(mc-bc):0)/255; audioSummary.trebleAverage=((l-mc)>0?T/(l-mc):0)/255;
-            return audioSummary;
-        }
-        
-        async function initVideoStream() { 
-            console.log("initVideoStream: Attempting to get camera feed.");
-            if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-                try {
-                    const constraints = { video: { facingMode: 'environment' } };
-                    const stream = await navigator.mediaDevices.getUserMedia(constraints);
-                    videoElement.srcObject = stream;
-                    await videoElement.play();
-                    videoElement.style.display = 'block';
-                    console.log("initVideoStream: Camera stream acquired and playing.");
-                    
-                    videoTexture = new THREE.VideoTexture(videoElement); // THREE will be global
-                    videoTexture.minFilter = THREE.LinearFilter;         // THREE will be global
-                    videoTexture.magFilter = THREE.LinearFilter;         // THREE will be global
-                    if (scene) scene.background = videoTexture;
-
-                } catch (err) {
-                    console.error("Error accessing camera:", err);
-                    if (scene) scene.background = new THREE.Color(0x100015); // THREE will be global
-                }
-            } else {
-                console.error("getUserMedia not supported!");
-                if (scene) scene.background = new THREE.Color(0x100015); // THREE will be global
-            }
-        }
-
-        const commonVertexShader = `
-            varying vec2 vUv;
-            void main() {
-                vUv = uv;
-                gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-            }
-        `;
-
-        const shaderVisuals = {
-            'shader1': {
-                fragmentShader: `
-                    precision highp float;
-                    uniform vec2 u_resolution;
-                    uniform float u_time;
-                    uniform float u_bass; uniform float u_mid; uniform float u_treble; uniform float u_overall_avg;
-                    varying vec2 vUv;
-
-                    void main() {
-                        vec2 u = .2*( (vUv * 2.0 - 1.0) * u_resolution )/u_resolution.y;
-                        vec4 z_shadertoy, o_shadertoy;
-                        o_shadertoy = vec4(1.0,2.0,3.0,0.0); 
-                        z_shadertoy = o_shadertoy;       
-                        vec2 v_shadertoy = u_resolution.xy;
-                        float t = u_time + u_bass * 5.0 + u_overall_avg * 2.0; 
-
-                        for (float a = .5, i = 0.0; 
-                            ++i < 19.; 
-                            o_shadertoy += (1. + cos(z_shadertoy+t)) 
-                                / length((1.+i*dot(v_shadertoy,v_shadertoy)) 
-                                        * sin(1.5*u/(.5-dot(u,u)) - 9.*u.yx + t))
-                            )  
-                            v_shadertoy = cos(++t - 7.*u*pow(a += .03 + u_mid*0.01, i)) - 5.*u, 
-                            u += tanh(40. * dot(u *= mat2(cos(i + .02*t - vec4(0,11,33,0))) 
-                                                    ,u) 
-                                            * cos(1e2*u.yx + t + u_treble*3.0)) / 2e2
-                            + .2 * a * u
-                            + cos(4./exp(dot(o_shadertoy,o_shadertoy)/1e2) + t) / 3e2;
-                            
-                        o_shadertoy = 25.6 / (min(o_shadertoy, 13.) + 164. / o_shadertoy) 
-                            - dot(u, u) / 250.;
-                        gl_FragColor = vec4(o_shadertoy.rgb, 1.0);
-                    }
-                `,
-                initUniforms: function() {
-                    return {
-                        u_time: { value: 0.0 },
-                        u_resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) }, // THREE will be global
-                        u_bass: { value: 0.0 }, u_mid: { value: 0.0 }, u_treble: { value: 0.0 }, u_overall_avg: { value: 0.0 }
-                    };
-                }
-            },
-            'waveform': {
-                fragmentShader: `
-                    precision highp float;
-                    uniform vec2 u_resolution;
-                    uniform float u_time;
-                    uniform float u_bass; uniform float u_mid; uniform float u_treble; uniform float u_overall_avg;
-                    varying vec2 vUv;
-
-                    void main() {
-                        vec2 R = u_resolution.xy;
-                        vec4 O_accum = vec4(0.0); 
-                        float i_loop = 0.0, d_step = 0.01, z_depth = 0.0, r_reflect = 0.0;
-                        float time_adjusted = u_time + u_overall_avg * 3.0;
-
-                        for(; i_loop++<90.0; 
-                            O_accum += (cos(z_depth*.5 + time_adjusted + u_bass * 2.0 + vec4(0,2,4,3)) + 1.3 ) / max(0.001, d_step) / max(0.001, z_depth)
-                        ) {
-                            vec2 uv_norm = vUv * 2.0 - 1.0; 
-                            uv_norm.x *= R.x / R.y; 
-                            vec3 rayDir = normalize(vec3(uv_norm, -1.0)); 
-                            vec3 p = z_depth * rayDir;
-                            
-                            vec3 p_temp_for_r = p;
-                            p_temp_for_r.y = p.y + 1.0; 
-                            r_reflect = max(-p_temp_for_r.y, 0.0); 
-                            p.y += r_reflect + r_reflect; 
-                            
-                            float d_inner_loop = 1.0; 
-                            for(; d_inner_loop<30.0; d_inner_loop+=d_inner_loop)
-                                p.y += cos(p*d_inner_loop + 2.*time_adjusted*cos(d_inner_loop + u_mid * 2.0)+z_depth).x/d_inner_loop;
-                            
-                            float dist_to_plane = p.z + 3.0 + u_treble * 2.0; 
-                            float scene_dist_term = abs(p.y-1.0);
-                            if (r_reflect > -1.0) { 
-                                scene_dist_term /= ( (r_reflect + 1.0)*(r_reflect + 1.0) ); 
-                            } else {
-                                scene_dist_term = 1e5; 
-                            }
-                            
-                            d_step = (0.1 * r_reflect + scene_dist_term + max(dist_to_plane, -dist_to_plane*0.1) ) / 8.0;
-                            d_step = max(0.01, d_step); 
-                            z_depth += d_step;
-                        }
-                        O_accum = tanh(O_accum/9e2);
-                        gl_FragColor = vec4(O_accum.rgb, 1.0);
-                    }
-                `,
-                initUniforms: function() {
-                    return {
-                        u_time: { value: 0.0 },
-                        u_resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) }, // THREE will be global
-                        u_bass: { value: 0.0 }, u_mid: { value: 0.0 }, u_treble: { value: 0.0 }, u_overall_avg: { value: 0.0 }
-                    };
-                }
-            }
-        }; 
-        
-        function initThreeJS() {
-            console.log("initThreeJS: Initializing Scene, Camera, Renderer...");
-            scene = new THREE.Scene(); // THREE will be global
-            clock = new THREE.Clock(); // THREE will be global
-            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000); // THREE will be global
-            camera.position.set(0,0,0.1); 
-
-            renderer = new THREE.WebGLRenderer({ antialias: true }); // THREE will be global
+            renderer = new THREE.WebGLRenderer({ antialias: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
-            document.getElementById('container').appendChild(renderer.domElement);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            document.body.appendChild(renderer.domElement);
 
-            // MODIFICATION: Use global THREE.DeviceOrientationControls
-            if (typeof THREE.DeviceOrientationControls === 'function') {
-                deviceControls = new THREE.DeviceOrientationControls(camera);
-                console.log("initThreeJS: DeviceOrientationControls initialized.");
-            } else {
-                console.error("THREE.DeviceOrientationControls is not available. Check script loading order and CDN access.");
-                if(loadingMessage) loadingMessage.innerHTML += "<br><small>Motion controls failed to load.</small>";
+            // Attempt to set up Device Orientation Controls
+            try {
+                if (typeof THREE.DeviceOrientationControls === 'function') {
+                    const isIOS = typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function';
+                    if (isIOS) {
+                        const overlay = document.getElementById('permissionOverlay');
+                        const button = document.getElementById('permissionButton');
+                        overlay.style.display = 'flex';
+                        button.onclick = function() {
+                            DeviceOrientationEvent.requestPermission().then(response => {
+                                if (response === 'granted') {
+                                    controls = new THREE.DeviceOrientationControls(camera);
+                                    document.getElementById('info').textContent = 'Motion sensors granted! Tap for fireworks.';
+                                } else {
+                                    document.getElementById('info').textContent = 'Motion sensors denied. Tap for fireworks.';
+                                }
+                                overlay.style.display = 'none';
+                            }).catch(console.error);
+                        };
+                    } else {
+                        controls = new THREE.DeviceOrientationControls(camera);
+                        document.getElementById('info').textContent = 'Tap for fireworks! Look around with device.';
+                    }
+                } else {
+                    console.warn("THREE.DeviceOrientationControls not loaded. Gyro controls will be disabled.");
+                    document.getElementById('info').textContent = 'Gyro controls failed to load. Tap for fireworks.';
+                }
+            } catch (e) {
+                console.error("Error setting up DeviceOrientationControls:", e);
+                document.getElementById('info').textContent = 'Error with gyro controls. Tap for fireworks.';
+            }
+            
+
+            createFireworksSystem();
+            
+            window.addEventListener('resize', onWindowResize, false);
+            document.body.addEventListener('pointerdown', launchExplosion, false); // Tap/click to launch
+
+            animate();
+            launchExplosion(); // Initial burst
+        }
+
+        function createFireworksSystem() {
+            const positions = new Float32Array(PARTICLE_COUNT * 3);
+            const velocities = new Float32Array(PARTICLE_COUNT * 3);
+            const colors = new Float32Array(PARTICLE_COUNT * 3);
+            const startTimes = new Float32Array(PARTICLE_COUNT);
+            const sizes = new Float32Array(PARTICLE_COUNT);
+
+            const geometry = new THREE.BufferGeometry();
+            geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            geometry.setAttribute('velocity', new THREE.BufferAttribute(velocities, 3));
+            geometry.setAttribute('customColor', new THREE.BufferAttribute(colors, 3));
+            geometry.setAttribute('startTime', new THREE.BufferAttribute(startTimes, 1));
+            geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+
+            fireworksMaterial = new THREE.ShaderMaterial({
+                uniforms: {
+                    u_time: { value: 0.0 },
+                    u_pointTexture: { value: new THREE.TextureLoader().load('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAABGdBTUEAALGPC/xhBQAAACBjSFJNAAB6JgAAgIQAAPoAAACA6AAAdTAAAOpgAAA6mAAAF3CculE8AAAABlBMVEUAAAD///+l2Z/dAAAAAWJLR0QB/wIt3gAAAAd0SU1FB+UMBRQoEy3R0ZcAAAEbSURBVDjLpZJbDsMgEEWfsJeAl155Klx5LAQVERH2FhLSlB7Sy3gD9gY2MERhJJC6UNvUnzL5P9lMFrgKviM43OEROu8BFBP4h3A7TY6nUdFnzrHUNzol3YT6yXaRPUu2k75I2k+uk/7JvqQ3k/7I/pG9SuLEd3YumjUSzCM6VzZ0rfpZ4w5hXk2IsTTicP4x7QW8ZBdTeBf7+8n46yNpN4W+k71Kk0TRND3350t2bstdl7SL5XlOvxu94nK30gfZ11GfP93qZ6t5KcjR70k8x9Ff43fqP9Fn877gp2PdtvQY0//xn9F/s50Xf9lF8830p13N8P1XvDb8H8L2jL5PUVfLz6k7C7DX4H8e0FPwKVgPMr58oVAQAAAABJRU5ErkJggg==') } // Simple white dot texture
+                },
+                vertexShader: `
+                    uniform float u_time;
+                    attribute vec3 velocity;
+                    attribute float startTime;
+                    attribute vec3 customColor;
+                    attribute float size;
+                    varying vec3 vColor;
+                    varying float vAlpha;
+
+                    const float lifespan = ${PARTICLE_LIFESPAN.toFixed(1)};
+                    const float gravity = ${PARTICLE_GRAVITY.toFixed(1)};
+
+                    void main() {
+                        vColor = customColor;
+                        float elapsedTime = u_time - startTime;
+
+                        if (elapsedTime > 0.0 && elapsedTime < lifespan) {
+                            vec3 currentPos = position + velocity * elapsedTime;
+                            currentPos.y -= 0.5 * gravity * elapsedTime * elapsedTime;
+                            
+                            vec4 mvPosition = modelViewMatrix * vec4(currentPos, 1.0);
+                            gl_PointSize = size * (200.0 / -mvPosition.z) * (1.0 - (elapsedTime / lifespan));
+                            gl_Position = projectionMatrix * mvPosition;
+                            vAlpha = 1.0 - (elapsedTime / lifespan);
+                        } else {
+                            gl_Position = vec4(-10000.0, -10000.0, 0.0, 1.0); // Hide particle
+                            vAlpha = 0.0;
+                        }
+                    }
+                `,
+                fragmentShader: `
+                    uniform sampler2D u_pointTexture;
+                    varying vec3 vColor;
+                    varying float vAlpha;
+
+                    void main() {
+                        float alphaFromTexture = texture2D(u_pointTexture, gl_PointCoord).a;
+                        gl_FragColor = vec4(vColor, vAlpha * alphaFromTexture);
+                    }
+                `,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false,
+                transparent: true,
+                vertexColors: true // Use 'customColor' attribute
+            });
+
+            fireworksParticles = new THREE.Points(geometry, fireworksMaterial);
+            scene.add(fireworksParticles);
+        }
+
+        let currentParticleIndex = 0;
+        function launchExplosion(event) {
+            const positions = fireworksParticles.geometry.attributes.position.array;
+            const velocities = fireworksParticles.geometry.attributes.velocity.array;
+            const colors = fireworksParticles.geometry.attributes.customColor.array;
+            const startTimes = fireworksParticles.geometry.attributes.startTime.array;
+            const sizes = fireworksParticles.geometry.attributes.size.array;
+
+            const explosionCenter = new THREE.Vector3(
+                (Math.random() - 0.5) * 10, // X
+                Math.random() * 3 + 1,      // Y
+                (Math.random() - 0.5) * 5 - 8 // Z (further away)
+            );
+
+            const particlesInBurst = 50 + Math.floor(Math.random() * 50); // 50-100 particles
+            const baseColor = new THREE.Color().setHSL(Math.random(), 0.8, 0.6);
+
+            for (let i = 0; i < particlesInBurst; i++) {
+                const idx = currentParticleIndex % PARTICLE_COUNT;
+                
+                positions[idx * 3 + 0] = explosionCenter.x;
+                positions[idx * 3 + 1] = explosionCenter.y;
+                positions[idx * 3 + 2] = explosionCenter.z;
+
+                const phi = Math.random() * Math.PI * 2;
+                const theta = Math.acos((Math.random() * 2) - 1); // More uniform spherical distribution
+                const speed = Math.random() * 3.0 + 2.0; // Speed of particles
+
+                velocities[idx * 3 + 0] = speed * Math.sin(theta) * Math.cos(phi);
+                velocities[idx * 3 + 1] = speed * Math.sin(theta) * Math.sin(phi);
+                velocities[idx * 3 + 2] = speed * Math.cos(theta);
+                // Add a slight upward bias to counteract gravity a bit initially for a better "burst"
+                velocities[idx * 3 + 1] += 1.5;
+
+
+                const colorVariation = (Math.random() - 0.5) * 0.2;
+                colors[idx * 3 + 0] = baseColor.r + colorVariation;
+                colors[idx * 3 + 1] = baseColor.g + colorVariation;
+                colors[idx * 3 + 2] = baseColor.b + colorVariation;
+
+                startTimes[idx] = clock.getElapsedTime() + (Math.random() * 0.2); // Stagger start times slightly
+                sizes[idx] = Math.random() * 2.0 + 1.0; // Random base size for gl_PointSize scaling
+
+                currentParticleIndex++;
             }
 
-
-            const planeGeometry = new THREE.PlaneGeometry(20, 20 * (window.innerHeight/window.innerWidth)); // THREE will be global
-            currentShaderMaterial = new THREE.ShaderMaterial({ // THREE will be global
-                vertexShader: commonVertexShader,
-                side: THREE.DoubleSide // THREE will be global
-            });
-            shaderPlane = new THREE.Mesh(planeGeometry, currentShaderMaterial); // THREE will be global
-            shaderPlane.position.set(0, 0, -5); 
-            scene.add(shaderPlane);
-            shaderPlane.visible = false; 
-
-            window.addEventListener('resize', onWindowResize, false);
-            console.log("initThreeJS: Complete.");
+            fireworksParticles.geometry.attributes.position.needsUpdate = true;
+            fireworksParticles.geometry.attributes.velocity.needsUpdate = true;
+            fireworksParticles.geometry.attributes.customColor.needsUpdate = true;
+            fireworksParticles.geometry.attributes.startTime.needsUpdate = true;
+            fireworksParticles.geometry.attributes.size.needsUpdate = true;
         }
+
 
         function onWindowResize() {
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
             renderer.setSize(window.innerWidth, window.innerHeight);
-            if (currentShaderMaterial && currentShaderMaterial.uniforms && currentShaderMaterial.uniforms.u_resolution) {
-                currentShaderMaterial.uniforms.u_resolution.value.set(window.innerWidth, window.innerHeight);
-            }
-            if (shaderPlane) {
-                const aspect = window.innerWidth / window.innerHeight;
-                if (shaderPlane.geometry) shaderPlane.geometry.dispose(); 
-                shaderPlane.geometry = new THREE.PlaneGeometry(20, 20 / aspect, 1, 1); // THREE will be global
-            }
         }
 
         function animate() {
             requestAnimationFrame(animate);
-            const delta = clock.getDelta();
             const elapsedTime = clock.getElapsedTime();
-
-            if (deviceControls) deviceControls.update();
-            const audioData = updateAudioSummary();
-
-            if (currentShaderMaterial && currentShaderMaterial.uniforms && currentShaderMaterial.uniforms.u_time && shaderPlane && shaderPlane.visible) { 
-                currentShaderMaterial.uniforms.u_time.value = elapsedTime;
-                currentShaderMaterial.uniforms.u_bass.value = audioData.bassAverage;
-                currentShaderMaterial.uniforms.u_mid.value = audioData.midAverage;
-                currentShaderMaterial.uniforms.u_treble.value = audioData.trebleAverage;
-                currentShaderMaterial.uniforms.u_overall_avg.value = audioData.overallAverage;
-            }
             
-            if (videoTexture) videoTexture.needsUpdate = true; 
+            if (controls) {
+                controls.update();
+            }
+
+            if (fireworksMaterial) {
+                fireworksMaterial.uniforms.u_time.value = elapsedTime;
+            }
+
             renderer.render(scene, camera);
         }
-        
-        window.setActiveVisual = (type) => {
-            console.log(`setActiveVisual: type="${type}", currentType="${currentVisualType}"`);
-            if (type === 'none') {
-                if (shaderPlane) shaderPlane.visible = false;
-                currentVisualType = 'none';
-                document.querySelectorAll('#controls button').forEach(btn => btn.classList.remove('active'));
-                document.getElementById('btn-none')?.classList.add('active');
-                console.log("Visuals cleared.");
-                return;
-            }
 
-            const visualConfig = shaderVisuals[type];
-            if (!visualConfig) {
-                console.warn("Unknown visual type:", type);
-                return;
-            }
-
-            if (currentVisualType === type && shaderPlane && shaderPlane.visible) {
-                console.log("Visual already active:", type);
-                return; 
-            }
-            
-            currentShaderMaterial.vertexShader = commonVertexShader; 
-            currentShaderMaterial.fragmentShader = visualConfig.fragmentShader;
-            currentShaderMaterial.uniforms = THREE.UniformsUtils.clone(visualConfig.initUniforms()); // THREE will be global
-            currentShaderMaterial.uniforms.u_resolution.value.set(window.innerWidth, window.innerHeight); 
-            currentShaderMaterial.needsUpdate = true; 
-            
-            if (shaderPlane) {
-                shaderPlane.material = currentShaderMaterial; 
-                shaderPlane.visible = true;
-            }
-            currentVisualType = type;
-
-            document.querySelectorAll('#controls button').forEach(btn => btn.classList.remove('active'));
-            document.getElementById(`btn-${type}`)?.classList.add('active');
-            console.log("Switched to visual:", type);
-        };
-        
-        async function requestPermissionsAndStart() {
-            console.log("Requesting permissions and starting...");
-            if(loadingMessage) loadingMessage.style.display = 'block';
-            if(loadingMessage) loadingMessage.innerHTML = "Requesting Permissions...";
-
-            let orientationPermissionGranted = false;
-            if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
-                try {
-                    const permissionState = await DeviceOrientationEvent.requestPermission();
-                    if (permissionState === 'granted') {
-                        orientationPermissionGranted = true; console.log("Device Orientation permission granted.");
-                    } else {
-                        console.warn("Device Orientation permission denied.");
-                        if(loadingMessage) loadingMessage.innerHTML += "<br><small>Orientation permission denied.</small>";
-                    }
-                } catch (error) {
-                    console.error("Error requesting Device Orientation permission:", error);
-                        if(loadingMessage) loadingMessage.innerHTML += "<br><small>Error with Orientation permissions.</small>";
-                }
-            } else {
-                orientationPermissionGranted = true; 
-                console.log("Device Orientation permission not required or already available.");
-            }
-
-            if(loadingMessage) loadingMessage.innerHTML = "Initializing Audio & Video...";
-            await startAudio(); 
-            await initVideoStream(); 
-
-            if(loadingMessage) loadingMessage.innerHTML = "Initializing 3D Scene...";
-            initThreeJS(); 
-            
-            if (!orientationPermissionGranted && deviceControls) {
-                console.warn("DeviceOrientationControls might not work without permission.");
-            }
-
-            if(loadingMessage) loadingMessage.style.display = 'none';
-            if(controlsDiv) controlsDiv.style.display = 'block'; 
-            
-            setActiveVisual('shader1'); 
-            animate(); 
+        // Check if Three.js loaded, then init
+        if (typeof THREE === 'object') {
+            init();
+        } else {
+            document.body.innerHTML = '<div style="color:red; text-align:center; padding-top: 50px; font-size:1.5em;">Error: Three.js failed to load from CDN. This experience cannot start. Please check your internet connection or try again later.</div>';
+            console.error("Three.js object not found. Main library failed to load.");
         }
-
-        if (startArButton) {
-            startArButton.addEventListener('click', () => {
-                if (startExperienceUI) startExperienceUI.style.display = 'none';
-                if (loadingMessage) loadingMessage.style.display = 'block';
-                requestPermissionsAndStart().catch(err => {
-                    console.error("Error in requestPermissionsAndStart chain:", err);
-                    if(loadingMessage) loadingMessage.innerHTML = "Failed to start experience: " + err.message;
-                });
-            });
-        } else { console.error("Start Button not found!"); }
 
     </script>
 </body>
