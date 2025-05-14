@@ -3,11 +3,15 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
-    <title>A Band After Midnight</title>
+    <title>A Band After Midnight - AR Experience</title>
     <style>
-        body { margin: 0; font-family: sans-serif; overflow: hidden; background-color: #000; }
+        body { margin: 0; font-family: sans-serif; overflow: hidden; background-color: #000; color: #fff; }
         #container { width: 100vw; height: 100vh; position: relative; overflow: hidden; }
-        #controls { position: absolute; top: 10px; left: 10px; z-index: 100; background: rgba(0,0,0,0.6); padding: 8px; border-radius: 8px; }
+        #controls {
+            position: absolute; top: 10px; left: 10px; z-index: 100;
+            background: rgba(0,0,0,0.6); padding: 8px; border-radius: 8px;
+            display: none; /* Initially hidden */
+        }
         #controls button {
             display: block;
             margin: 6px;
@@ -21,20 +25,47 @@
         }
         #controls button:hover { background-color: #666; }
         #controls button.active { background-color: #007bff; border-color: #0056b3;}
+
         #loadingMessage {
             position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
             color: white; font-size: 1.5em; text-align: center;
             background: rgba(0,0,0,0.75); padding: 25px; border-radius: 10px;
             z-index: 200;
+            display: none; /* Initially hidden */
         }
+
+        #startExperienceUI {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            z-index: 300; text-align: center; background: rgba(0,0,0,0.85);
+            padding: 30px; border-radius: 15px; max-width: 90%; box-sizing: border-box;
+        }
+        #startExperienceUI h2 { margin-top: 0; color: #00aaff; }
+        #startExperienceUI p { font-size: 1.1em; margin-bottom: 25px; line-height: 1.5; }
+        #startArButton {
+            padding: 15px 30px; font-size: 1.25em; cursor: pointer;
+            background-color: #007bff; color: white; border: none;
+            border-radius: 8px; font-weight: bold;
+            transition: background-color 0.3s ease;
+        }
+        #startArButton:hover { background-color: #0056b3; }
     </style>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/0.164.1/three.min.js"></script>
-
     <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-three.prod.js"></script>
-    </head>
+</head>
 <body>
-    <div id="loadingMessage">Loading AR Experience...<br>Please Allow Camera & Microphone Access.</div>
+    <div id="startExperienceUI">
+        <h2>Welcome to the AR Visualizer!</h2>
+        <p>
+            This experience uses your device's camera for Augmented Reality
+            and your microphone to make the visuals react to sound.
+            <br><br>
+            Please click "Start" and then <strong>allow camera and microphone access</strong> when your browser asks.
+        </p>
+        <button id="startArButton">Start AR Experience</button>
+    </div>
+
+    <div id="loadingMessage">Loading AR Experience...</div>
     <div id="controls">
         <button id="btn-starfield" onclick="setActiveVisual('starfield')">Star Field</button>
         <button id="btn-clouds" onclick="setActiveVisual('clouds')">Clouds</button>
@@ -48,7 +79,10 @@
         document.addEventListener('DOMContentLoaded', () => {
             const container = document.querySelector("#container");
             const loadingMessage = document.getElementById('loadingMessage');
+            const controlsDiv = document.getElementById('controls');
             const controlButtons = document.querySelectorAll('#controls button');
+            const startExperienceUI = document.getElementById('startExperienceUI');
+            const startArButton = document.getElementById('startArButton');
 
             let mindarThree;
             let anchor;
@@ -56,7 +90,6 @@
             let currentVisualType = 'none';
             const clock = new THREE.Clock();
 
-            // Audio analysis setup
             let analyser;
             let dataArray;
             const audioSummary = {
@@ -65,7 +98,8 @@
             };
 
             async function startAudio() {
-                if (audioSummary.audioContextActive) return; // Prevent multiple initializations
+                if (audioSummary.audioContextActive) return;
+                if(loadingMessage) loadingMessage.innerHTML = "Requesting microphone access...";
                 try {
                     const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
                     const audioContext = new (window.AudioContext || window.webkitAudioContext)();
@@ -82,6 +116,7 @@
                 } catch (err) {
                     console.error("Error accessing microphone:", err);
                     if(loadingMessage) loadingMessage.innerHTML = "Microphone access denied/error. Audio reactivity disabled.<br><small>" + err.message + "</small>";
+                    // Proceed without audio if denied/error, visuals will still work but not react as much.
                 }
             }
 
@@ -138,16 +173,13 @@
             }
 
             const initMindAR = async () => {
-                if(loadingMessage) loadingMessage.innerHTML = "Initializing AR...<br>Point camera at the target image.";
+                if(loadingMessage) loadingMessage.innerHTML = "Initializing AR...<br>Please allow camera access and point at the target image.";
                 
-                // Attempt to start audio here, as camera/mic often requested together by MindAR
-                await startAudio();
+                await startAudio(); // Request microphone access first or concurrently
 
                 mindarThree = new MINDAR.IMAGE.MindARThree({
                     container: container,
-                    // !!! CRITICAL: REPLACE THIS WITH THE PATH TO YOUR .MIND FILE !!!
-                    // Example: "./your-target.mind" or "./assets/your-target.mind"
-                    imageTargetSrc: "./targets.mind",
+                    imageTargetSrc: "./targets.mind", // Ensure this file exists!
                     maxTrack: 1,
                     uiLoading: "no", uiScanning: "no", uiError: "yes"
                 });
@@ -156,21 +188,22 @@
 
                 anchor.onTargetFound = () => {
                     console.log("Target Found!");
-                    if(loadingMessage) loadingMessage.style.display = 'none';
+                    if(loadingMessage) loadingMessage.style.display = 'none'; // Hide loading message fully
                     if (currentVisualType === 'none' && !currentVisual) {
-                        setActiveVisual('starfield'); // Default visual
+                        setActiveVisual('starfield');
                     }
                 };
                 anchor.onTargetLost = () => {
                     console.log("Target Lost.");
+                    // Optionally, show a "target lost" message, but not the main loading one
                     // if(loadingMessage) {
-                    //     loadingMessage.innerHTML = "Target lost. Find image.";
+                    //     loadingMessage.innerHTML = "Target lost. Please find the image marker.";
                     //     loadingMessage.style.display = 'block';
                     // }
                 };
 
                 try {
-                    await mindarThree.start();
+                    await mindarThree.start(); // This will trigger camera permission prompt
                     renderer.setAnimationLoop(() => {
                         const delta = clock.getDelta();
                         const elapsedTime = clock.elapsedTime;
@@ -183,7 +216,8 @@
                     });
                 } catch (e) {
                     console.error("Error starting MindAR:", e);
-                    if(loadingMessage) loadingMessage.innerHTML = "Error starting AR. Check console and permissions.<br><small>" + e.message + "</small>";
+                    if(loadingMessage) loadingMessage.innerHTML = "Error starting AR. Check console, permissions, and target file.<br><small>" + e.message + "</small>";
+                     // Keep loading message visible with the error
                 }
             };
 
@@ -226,14 +260,11 @@
                 if (currentVisual) console.log("Set active visual:", currentVisual.type);
             };
 
-            // --- Visual Effect Functions ---
-            // (Shader code needs to be robust and tested for specific GPU/browser compatibilities)
-            // Basic pseudo-random for shaders (can be replaced with more complex noise if needed)
             const shaderNoiseFunctions = `
                 float rand(vec2 co){ return fract(sin(dot(co.xy ,vec2(12.9898,78.233))) * 43758.5453); }
                 float noise(vec2 p) {
                     vec2 i = floor(p); vec2 f = fract(p);
-                    f = f*f*(3.0-2.0*f); // Smoothstep
+                    f = f*f*(3.0-2.0*f);
                     float r1 = mix(rand(i), rand(i + vec2(1.0,0.0)),f.x);
                     float r2 = mix(rand(i + vec2(0.0,1.0)), rand(i + vec2(1.0,1.0)),f.x);
                     return mix(r1,r2,f.y);
@@ -328,7 +359,7 @@
                 }`;
 
             function createFlowingWater() {
-                const geometry = new THREE.PlaneGeometry(15, 15, 40, 40); // Reduced segments for perf
+                const geometry = new THREE.PlaneGeometry(15, 15, 40, 40);
                 const material = new THREE.ShaderMaterial({
                     vertexShader: waterVertexShader, fragmentShader: waterFragmentShader,
                     uniforms: {
@@ -354,7 +385,7 @@
             }
 
             function createFireflies() {
-                const particleCount = 60; // Reduced for perf
+                const particleCount = 60;
                 const positions = new Float32Array(particleCount * 3);
                 const fireflyInstanceData = [];
                 for (let i = 0; i < particleCount; i++) {
@@ -394,24 +425,45 @@
                             const blink = Math.sin(time * (1.5 + audioLevel*2.0) + ff.blinkOffset) + Math.sin(time*0.6 + ff.blinkOffset*0.7);
                             if (blink > 0.9) collectiveOpacity += ((blink - 0.9)/1.1) * (0.6 + audioLevel*0.4);
                         }
-                        material.opacity = Math.min(1.0, collectiveOpacity / (particleCount * 0.15) + 0.05 ); // Added a small base
+                        material.opacity = Math.min(1.0, collectiveOpacity / (particleCount * 0.15) + 0.05 );
                         posAttr.needsUpdate = true;
                     }
                 };
             }
 
-            // Start the experience
-            loadAllAssets(() => {
-                if (typeof MINDAR === 'undefined' || typeof MINDAR.IMAGE === 'undefined' || typeof THREE === 'undefined') {
-                    if(loadingMessage) loadingMessage.innerHTML = "Error: Critical libraries (THREE or MINDAR) not loaded. Check script tags and internet connection.";
-                    console.error("THREE or MINDAR library not loaded. Check script tags in <head>.");
-                    return;
+            // --- Application Startup Logic ---
+            const beginARExperience = () => {
+                if (startExperienceUI) startExperienceUI.style.display = 'none';
+                if (loadingMessage) {
+                    loadingMessage.innerHTML = "Loading AR assets..."; // Initial message after start
+                    loadingMessage.style.display = 'block';
                 }
-                initMindAR().catch(err => {
-                     if(loadingMessage) loadingMessage.innerHTML = "Failed to initialize AR. Check console, permissions, and .mind file path.<br><small>" + err.message + "</small>";
-                     console.error("Failed to initialize AR:", err);
+                if (controlsDiv) controlsDiv.style.display = 'block'; // Or 'flex' if it's a flex container
+
+                loadAllAssets(() => {
+                    if (typeof MINDAR === 'undefined' || typeof MINDAR.IMAGE === 'undefined' || typeof THREE === 'undefined') {
+                        if(loadingMessage) loadingMessage.innerHTML = "Error: Critical libraries (THREE or MINDAR) not loaded. Check script tags and internet connection.";
+                        console.error("THREE or MINDAR library not loaded. Check script tags in <head>.");
+                        // Optionally, bring back the startExperienceUI or show a persistent error
+                        // if (startExperienceUI) startExperienceUI.style.display = 'block';
+                        return;
+                    }
+                    initMindAR().catch(err => { // initMindAR contains permission requests
+                         if(loadingMessage) loadingMessage.innerHTML = "Failed to initialize AR. Check console, permissions, and .mind file path.<br><small>" + err.message + "</small>";
+                         console.error("Failed to initialize AR:", err);
+                    });
                 });
-            });
+            };
+
+            if (startArButton) {
+                startArButton.addEventListener('click', beginARExperience);
+            } else {
+                console.error("Start AR Button not found. AR experience cannot be initiated by user.");
+                if(loadingMessage) {
+                    loadingMessage.innerHTML = "Error: Start button missing. Cannot initialize.";
+                    loadingMessage.style.display = 'block';
+                }
+            }
         });
     </script>
 </body>
