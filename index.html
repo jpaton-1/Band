@@ -54,7 +54,7 @@
     {
       "imports": {
         "three": "https://cdnjs.cloudflare.com/ajax/libs/three.js/0.164.1/three.module.min.js",
-        "three/addons/": "https://cdnjs.cloudflare.com/ajax/libs/three.js/0.164.1/examples/jsm/",
+        "three/addons/": "https://unpkg.com/three@0.164.1/examples/jsm/",
         "mindar-image-three": "https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-three.prod.js"
       }
     }
@@ -85,6 +85,9 @@
     <script type="module">
         import * as THREE from 'three';
         import { MindARThree } from 'mindar-image-three';
+
+        // Optional: If CSS3DRenderer is explicitly needed by your own code later, you would import it like this:
+        // import { CSS3DRenderer } from 'three/addons/renderers/CSS3DRenderer.js';
 
         document.addEventListener('DOMContentLoaded', () => {
             const container = document.querySelector("#container");
