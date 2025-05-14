@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
-    <title>A Band After Midnight</title>
+    <title>A Band After Midnight - AR Debugging</title>
     <style>
         body { margin: 0; font-family: sans-serif; overflow: hidden; background-color: #000; color: #fff; }
         #container { width: 100vw; height: 100vh; position: relative; overflow: hidden; }
@@ -62,18 +62,19 @@
 </head>
 <body>
     <div id="startExperienceUI">
-        <h2>We can't see or hear...</h2>
+        <h2>Welcome to the AR Visualizer!</h2>
         <p>
-            We need access to your device's camera and microphone.
+            This experience uses your device's camera for Augmented Reality
+            and your microphone to make the visuals react to sound.
             <br><br>
-            Click "Start" and then <strong>allow camera and microphone access</strong> when your browser asks.
+            Please click "Start" and then <strong>allow camera and microphone access</strong> when your browser asks.
         </p>
-        <button id="startArButton">Start</button>
+        <button id="startArButton">Start AR Experience</button>
     </div>
 
-    <div id="loadingMessage">Loading...</div>
+    <div id="loadingMessage">Loading AR Experience...</div>
     <div id="controls">
-        <button id="btn-starfield" onclick="setActiveVisual('starfield')">Star Field</button>
+        <button id="btn-starfield" onclick="setActiveVisual('starfield')">Star Field (Debug)</button>
         <button id="btn-clouds" onclick="setActiveVisual('clouds')">Clouds</button>
         <button id="btn-water" onclick="setActiveVisual('water')">Flowing Water</button>
         <button id="btn-fireflies" onclick="setActiveVisual('fireflies')">Fireflies</button>
@@ -84,9 +85,6 @@
     <script type="module">
         import * as THREE from 'three';
         import { MindARThree } from 'mindar-image-three';
-
-        // Optional: If CSS3DRenderer is explicitly needed by your own code later, you would import it like this:
-        // import { CSS3DRenderer } from 'three/addons/renderers/CSS3DRenderer.js';
 
         document.addEventListener('DOMContentLoaded', () => {
             const container = document.querySelector("#container");
@@ -157,7 +155,7 @@
             }
 
             const textureLoader = new THREE.TextureLoader();
-            let starTexture, cloudTexture, fireflyTexture;
+            let starTexture, cloudTexture, fireflyTexture; // These will be initialized in loadAllAssets
 
             function loadAllAssets(callback) {
                 if(loadingMessage) loadingMessage.innerHTML = "Loading textures...";
@@ -195,26 +193,33 @@
                 });
                 const { renderer, scene, camera } = mindarThree;
                 
-                // With older Three.js (like r151), you might need to set outputEncoding on the renderer
-                // if MindAR doesn't handle it for this version combination.
-                // Modern Three.js uses outputColorSpace.
-                // Check if MindAR 1.2.5 sets this; if colors look off, you might need:
-                // renderer.outputEncoding = THREE.sRGBEncoding; // (if THREE.sRGBEncoding is available)
-                                                            // or the appropriate ColorSpace for newer
-                                                            // three.js if you were on a newer version of mindar.
-                                                            // For r151, sRGBEncoding should be fine if needed.
+                // For Three.js r151, if colors look off, you might need to set this.
+                // MindAR 1.2.5 might handle this, but good to be aware.
+                // renderer.outputEncoding = THREE.sRGBEncoding; // sRGBEncoding should be available in r151
 
                 anchor = mindarThree.addAnchor(0);
 
+                // DEBUGGING: Add a reference cube to the anchor
+                // const debugGeometry = new THREE.BoxGeometry(0.2, 0.2, 0.2);
+                // const debugMaterial = new THREE.MeshBasicMaterial({ color: 0x00ff00 }); // Green
+                // const debugCube = new THREE.Mesh(debugGeometry, debugMaterial);
+                // debugCube.position.set(0, 0.1, 0); // Slightly above center
+                // anchor.group.add(debugCube);
+                // console.log("Debug cube added to anchor.");
+
+
                 anchor.onTargetFound = () => {
-                    console.log("Target Found!");
+                    console.log("Target Found! Forcing 'starfield' for debugging.");
                     if(loadingMessage) loadingMessage.style.display = 'none';
-                    if (currentVisualType === 'none' && !currentVisual) {
-                        setActiveVisual('starfield');
-                    }
+                    setActiveVisual('starfield'); // Focus on starfield for debugging
                 };
                 anchor.onTargetLost = () => {
                     console.log("Target Lost.");
+                     // Optionally, bring back a message or hide visuals
+                    // if(loadingMessage && !anchor.visible) {
+                    //    loadingMessage.innerHTML = "Target lost. Please find the image marker.";
+                    //    loadingMessage.style.display = 'block';
+                    // }
                 };
 
                 try {
@@ -246,16 +251,27 @@
                             currentVisual.mesh.material.dispose();
                         }
                     }
-                    if (currentVisual.textures) {
-                        currentVisual.textures.forEach(tex => tex.dispose());
-                    }
+                    // Dispose textures if they were uniquely created for this visual and not shared placeholders
+                    // For now, our placeholder textures (starTexture, etc.) are global.
+                    // If visuals created their own textures, you'd dispose them here.
+                    // if (currentVisual.textures) {
+                    //     currentVisual.textures.forEach(tex => tex.dispose());
+                    // }
                     console.log("Cleared visual:", currentVisual.type);
                 }
                 currentVisual = null;
             }
             
-            window.setActiveVisual = (type) => {
-                if (currentVisualType === type && type !== 'none' && currentVisual) return;
+            window.setActiveVisual = (type) => { // Attached to window to be accessible from HTML onclick
+                if (currentVisualType === type && type !== 'none' && currentVisual && type !== 'starfield') { // Allow re-setting starfield for debug
+                     // Allow re-triggering the current visual if it's 'starfield' for easier debugging clicks
+                    if (type === 'starfield' && currentVisual && currentVisual.type === 'starfield') {
+                        // No change, already starfield
+                    } else if (currentVisualType === type && type !== 'none' && currentVisual) {
+                        return;
+                    }
+                }
+
 
                 clearVisuals();
                 currentVisualType = type;
@@ -294,83 +310,98 @@
                 }
             `;
 
-function createStarField() {
-    const particleCount = 2000; // Keep particle count for now, or reduce for testing
-    const positions = new Float32Array(particleCount * 3);
-    const colors = new Float32Array(particleCount * 3);
-    for (let i = 0; i < particleCount; i++) {
-        // Original:
-        // positions[i * 3 + 0] = (Math.random() - 0.5) * 30;
-        // positions[i * 3 + 1] = Math.random() * 15 + 5;
-        // positions[i * 3 + 2] = (Math.random() - 0.5) * 30 - 8;
+            // --- STARFIELD (DEBUG VERSION) ---
+            function createStarField() {
+                const particleCount = 500; 
+                const positions = new Float32Array(particleCount * 3);
+                console.log("Debugging StarField: Creating particles...");
 
-        // Adjusted for better visibility (closer to a 1x1 target):
-        positions[i * 3 + 0] = (Math.random() - 0.5) * 2;   // X range: -1 to 1
-        positions[i * 3 + 1] = (Math.random() - 0.5) * 2;   // Y range: -1 to 1 (centered on target plane)
-        positions[i * 3 + 2] = (Math.random() - 0.5) * 1;   // Z range: -0.5 to 0.5 (closer to target plane)
+                for (let i = 0; i < particleCount; i++) {
+                    positions[i * 3 + 0] = (Math.random() - 0.5) * 1.5;   // X range: -0.75 to 0.75
+                    positions[i * 3 + 1] = (Math.random() * 0.4) - 0.1;   // Y range: -0.1 to 0.3 (around where water is)
+                    positions[i * 3 + 2] = (Math.random() - 0.5) * 1.5;   // Z range: -0.75 to 0.75
+                }
+                const geometry = new THREE.BufferGeometry();
+                geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
 
-        const color = new THREE.Color();
-        color.setHSL(Math.random() * 0.1 + 0.58, 0.9, Math.random() * 0.35 + 0.6);
-        colors[i * 3 + 0] = color.r; colors[i * 3 + 1] = color.g; colors[i * 3 + 2] = color.b;
-    }
-    const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-    geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-    const material = new THREE.PointsMaterial({
-        // Original size: size: 0.07,
-        size: 0.03, // Adjust particle size if overall scene scale is smaller
-        map: starTexture, vertexColors: true,
-        transparent: true, blending: THREE.AdditiveBlending,
-        sizeAttenuation: true, depthWrite: false, opacity: 0.85
-    });
-    const points = new THREE.Points(geometry, material);
-    anchor.group.add(points);
-    currentVisual = {
-        mesh: points, type: 'starfield',
-        update: (audioData, time) => {
-            points.material.opacity = 0.6 + (audioData.trebleAverage / 255) * 0.4;
-            // Slower rotation if preferred, or make it dependent on the new scale
-            points.rotation.y += 0.0003; // Keep for now, adjust if too fast/slow
-        }
-    };
-}
+                const material = new THREE.PointsMaterial({
+                    size: 0.08,                 
+                    color: 0xff00ff,            
+                    transparent: false,         
+                    opacity: 1.0,
+                    blending: THREE.NormalBlending, 
+                    depthWrite: true,           
+                    sizeAttenuation: true       
+                });
+                const points = new THREE.Points(geometry, material);
+                // points.position.z = 0.05; // Optional: slight Z offset
+
+                if (anchor && anchor.group) {
+                    anchor.group.add(points);
+                    console.log("Debugging StarField: Mesh added to anchor group.");
+                } else {
+                    console.error("StarField: Anchor or anchor.group is not available!");
+                    return; 
+                }
+
+                currentVisual = {
+                    mesh: points, type: 'starfield',
+                    update: (audioData, time) => {
+                        points.rotation.y += 0.001; 
+                    }
+                };
+            }
 
 
+            // --- CLOUDS (Initial Adjustments - NOT FULL DEBUG YET) ---
             function createClouds() {
-                const particleCount = 120;
+                const particleCount = 100; // Reduced for easier initial testing
                 const positions = new Float32Array(particleCount * 3);
                 const cloudInstanceData = [];
+                console.log("Attempting to create Clouds. Anchor visible:", anchor ? anchor.visible : 'N/A');
+
                 for (let i = 0; i < particleCount; i++) {
-                    positions[i * 3 + 0] = (Math.random() - 0.5) * 20;
-                    positions[i * 3 + 1] = Math.random() * 5 + 7;
-                    positions[i * 3 + 2] = (Math.random() - 0.5) * 15 - 10;
-                    cloudInstanceData.push({ driftX: (Math.random() - 0.5) * 0.008, driftZ: (Math.random() - 0.5) * 0.003 });
+                    positions[i * 3 + 0] = (Math.random() - 0.5) * 2.5; // X range: -1.25 to 1.25
+                    positions[i * 3 + 1] = Math.random() * 1.0 + 0.2;   // Y range: 0.2 to 1.2 (above target)
+                    positions[i * 3 + 2] = (Math.random() - 0.5) * 2.0 - 0.5; // Z range: -1.5 to 0.5 (some behind, some front)
+                    cloudInstanceData.push({ driftX: (Math.random() - 0.5) * 0.004, driftZ: (Math.random() - 0.5) * 0.0015 });
                 }
                 const geometry = new THREE.BufferGeometry();
                 geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
                 const material = new THREE.PointsMaterial({
-                    size: 8.0, map: cloudTexture, transparent: true, opacity: 0.20,
-                    blending: THREE.NormalBlending, depthWrite: false, color: 0xf0f8ff
+                    size: 0.8, // Adjusted size - this is large if cloudTexture is small, might need tuning
+                    map: cloudTexture, 
+                    transparent: true, 
+                    opacity: 0.5, // Increased base opacity
+                    blending: THREE.NormalBlending, 
+                    depthWrite: false, 
+                    color: 0xffffff // Ensure white if texture has alpha
                 });
                 const points = new THREE.Points(geometry, material);
-                anchor.group.add(points);
+                
+                if (anchor && anchor.group) {
+                    anchor.group.add(points);
+                } else { return; }
+
                 currentVisual = {
                     mesh: points, type: 'clouds', data: cloudInstanceData,
                     update: (audioData, time, delta) => {
                         const posAttr = points.geometry.getAttribute('position');
                         const audioInfluence = audioData.midAverage / 255;
-                        material.opacity = 0.15 + (audioData.overallAverage / 255) * 0.25;
+                        // material.opacity = 0.4 + (audioData.overallAverage / 255) * 0.3; // Keep audio opacity simple
                         for (let i = 0; i < particleCount; i++) {
-                            posAttr.array[i * 3 + 0] += (currentVisual.data[i].driftX + audioInfluence * 0.002) * (delta * 60);
-                            posAttr.array[i * 3 + 2] += (currentVisual.data[i].driftZ + audioInfluence * 0.001) * (delta * 60);
-                            if (posAttr.array[i * 3 + 0] > 12) posAttr.array[i * 3 + 0] = -12;
-                            else if (posAttr.array[i * 3 + 0] < -12) posAttr.array[i * 3 + 0] = 12;
+                            posAttr.array[i * 3 + 0] += (currentVisual.data[i].driftX + audioInfluence * 0.001) * (delta * 60);
+                            posAttr.array[i * 3 + 2] += (currentVisual.data[i].driftZ + audioInfluence * 0.0005) * (delta * 60);
+                            // Simple wrap around for X
+                            if (posAttr.array[i * 3 + 0] > 1.5) posAttr.array[i * 3 + 0] = -1.5;
+                            else if (posAttr.array[i * 3 + 0] < -1.5) posAttr.array[i * 3 + 0] = 1.5;
                         }
                         posAttr.needsUpdate = true;
                     }
                 };
             }
 
+            // --- FLOWING WATER (Known Visible Parameters) ---
             const waterVertexShader = shaderNoiseFunctions + `
                 varying vec2 vUv; uniform float uTime; uniform float uFrequency; uniform float uAmplitude;
                 void main() {
@@ -393,11 +424,12 @@ function createStarField() {
                 }`;
 
             function createFlowingWater() {
-                const geometry = new THREE.PlaneGeometry(15, 15, 40, 40);
+                const geometry = new THREE.PlaneGeometry(1.5, 1.5, 20, 20); 
                 const material = new THREE.ShaderMaterial({
                     vertexShader: waterVertexShader, fragmentShader: waterFragmentShader,
                     uniforms: {
-                        uTime: { value: 0.0 }, uFrequency: { value: 2.5 }, uAmplitude: { value: 0.2 },
+                        uTime: { value: 0.0 }, uFrequency: { value: 2.5 }, 
+                        uAmplitude: { value: 0.1 }, // Keep amplitude moderate
                         uWaterColorDeep: { value: new THREE.Color(0x001e42) },
                         uWaterColorSurface: { value: new THREE.Color(0x30a0f0) },
                         uOpacity: { value: 0.65 }
@@ -405,40 +437,57 @@ function createStarField() {
                     transparent: true, depthWrite: false, side: THREE.DoubleSide
                 });
                 const waterMesh = new THREE.Mesh(geometry, material);
-                waterMesh.position.y = 4; waterMesh.rotation.x = -Math.PI / 2.8;
-                anchor.group.add(waterMesh);
+                waterMesh.position.y = 0.05; 
+                waterMesh.rotation.x = -Math.PI / 2.8; 
+                
+                if (anchor && anchor.group) {
+                    anchor.group.add(waterMesh);
+                } else { return; }
+
                 currentVisual = {
                     mesh: waterMesh, type: 'water',
                     update: (audioData, time) => {
                         material.uniforms.uTime.value = time;
-                        material.uniforms.uFrequency.value = 1.5 + (audioData.midAverage / 255) * 5.0;
-                        material.uniforms.uAmplitude.value = 0.05 + (audioData.bassAverage / 255) * 0.45;
+                        material.uniforms.uFrequency.value = 1.5 + (audioData.midAverage / 255) * 4.0; // Adjusted audio influence
+                        material.uniforms.uAmplitude.value = 0.02 + (audioData.bassAverage / 255) * 0.10; // Adjusted audio influence
                         material.uniforms.uOpacity.value = 0.4 + (audioData.overallAverage / 255) * 0.45;
                     }
                 };
             }
 
+            // --- FIREFLIES (Initial Adjustments - NOT FULL DEBUG YET) ---
             function createFireflies() {
-                const particleCount = 60;
+                const particleCount = 80; // Moderate count
                 const positions = new Float32Array(particleCount * 3);
                 const fireflyInstanceData = [];
+                console.log("Attempting to create Fireflies. Anchor visible:", anchor ? anchor.visible : 'N/A');
+
                 for (let i = 0; i < particleCount; i++) {
-                    positions[i * 3 + 0] = (Math.random() - 0.5) * 12;
-                    positions[i * 3 + 1] = Math.random() * 5 + 1;
-                    positions[i * 3 + 2] = (Math.random() - 0.5) * 12 - 3;
+                    positions[i * 3 + 0] = (Math.random() - 0.5) * 1.8; // X range: -0.9 to 0.9
+                    positions[i * 3 + 1] = (Math.random() * 0.8) - 0.2;   // Y range: -0.2 to 0.6 (around target plane)
+                    positions[i * 3 + 2] = (Math.random() - 0.5) * 1.8; // Z range: -0.9 to 0.9
                     fireflyInstanceData.push({
-                        velocity: new THREE.Vector3((Math.random()-0.5)*0.01, (Math.random()-0.5)*0.005, (Math.random()-0.5)*0.01),
+                        velocity: new THREE.Vector3((Math.random()-0.5)*0.005, (Math.random()-0.5)*0.0025, (Math.random()-0.5)*0.005),
                         blinkOffset: Math.random() * Math.PI * 2, targetY: positions[i * 3 + 1]
                     });
                 }
                 const geometry = new THREE.BufferGeometry();
                 geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
                 const material = new THREE.PointsMaterial({
-                    size: 0.22, map: fireflyTexture, color: 0xffffaa,
-                    transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0.9
+                    size: 0.06, // Adjusted size
+                    map: fireflyTexture, 
+                    color: 0xffffaa,
+                    transparent: true, 
+                    blending: THREE.AdditiveBlending, 
+                    depthWrite: false, 
+                    opacity: 0.9
                 });
                 const points = new THREE.Points(geometry, material);
-                anchor.group.add(points);
+
+                if (anchor && anchor.group) {
+                    anchor.group.add(points);
+                } else { return; }
+                
                 currentVisual = {
                     mesh: points, type: 'fireflies', data: fireflyInstanceData,
                     update: (audioData, time, delta) => {
@@ -447,31 +496,35 @@ function createStarField() {
                         let collectiveOpacity = 0;
                         for (let i = 0; i < particleCount; i++) {
                             const ff = currentVisual.data[i];
-                            posAttr.array[i * 3 + 0] += ff.velocity.x * (1 + audioLevel*0.5) * (delta*60);
-                            posAttr.array[i * 3 + 1] += ff.velocity.y * (1 + audioLevel*0.2) * (delta*60);
-                            posAttr.array[i * 3 + 2] += ff.velocity.z * (1 + audioLevel*0.5) * (delta*60);
-                            ff.velocity.y += (ff.targetY - posAttr.array[i * 3 + 1]) * 0.0005;
-                            ff.velocity.multiplyScalar(0.98);
-                            if (Math.random() < 0.02) ff.velocity.add(new THREE.Vector3((Math.random()-0.5)*0.005, (Math.random()-0.5)*0.003, (Math.random()-0.5)*0.005));
-                            if (Math.abs(posAttr.array[i*3+0]) > 7) ff.velocity.x *= -0.9;
-                            if (posAttr.array[i*3+1] < 0.5 || posAttr.array[i*3+1] > 7) ff.velocity.y *= -0.9;
-                            if (Math.abs(posAttr.array[i*3+2]) > 7) ff.velocity.z *= -0.9;
-                            const blink = Math.sin(time * (1.5 + audioLevel*2.0) + ff.blinkOffset) + Math.sin(time*0.6 + ff.blinkOffset*0.7);
-                            if (blink > 0.9) collectiveOpacity += ((blink - 0.9)/1.1) * (0.6 + audioLevel*0.4);
+                            posAttr.array[i * 3 + 0] += ff.velocity.x * (1 + audioLevel*0.2) * (delta*60); // Reduced audio influence on speed
+                            posAttr.array[i * 3 + 1] += ff.velocity.y * (1 + audioLevel*0.1) * (delta*60);
+                            posAttr.array[i * 3 + 2] += ff.velocity.z * (1 + audioLevel*0.2) * (delta*60);
+                            ff.velocity.y += (ff.targetY - posAttr.array[i * 3 + 1]) * 0.0005; // Keep attraction
+                            ff.velocity.multiplyScalar(0.98); // Dampen velocity
+                            // Simpler random movement impulse
+                            if (Math.random() < 0.01) ff.velocity.add(new THREE.Vector3((Math.random()-0.5)*0.002, (Math.random()-0.5)*0.001, (Math.random()-0.5)*0.002));
+                            // Boundary checks based on new tighter distribution
+                            if (Math.abs(posAttr.array[i*3+0]) > 1.0) ff.velocity.x *= -0.8;
+                            if (posAttr.array[i*3+1] < -0.3 || posAttr.array[i*3+1] > 0.7) ff.velocity.y *= -0.8;
+                            if (Math.abs(posAttr.array[i*3+2]) > 1.0) ff.velocity.z *= -0.8;
+                            
+                            const blink = Math.sin(time * (1.0 + audioLevel*1.5) + ff.blinkOffset) + Math.sin(time*0.4 + ff.blinkOffset*0.5); // Simpler blink
+                            if (blink > 0.8) collectiveOpacity += ((blink - 0.8)/1.2) * (0.5 + audioLevel*0.5);
                         }
-                        material.opacity = Math.min(1.0, collectiveOpacity / (particleCount * 0.15) + 0.05 );
+                        material.opacity = Math.min(1.0, (collectiveOpacity / (particleCount * 0.1)) + 0.1 ); // Adjusted opacity logic
                         posAttr.needsUpdate = true;
                     }
                 };
             }
 
+            // --- Application Startup Logic ---
             const beginARExperience = () => {
                 if (startExperienceUI) startExperienceUI.style.display = 'none';
                 if (loadingMessage) {
                     loadingMessage.innerHTML = "Loading AR assets...";
                     loadingMessage.style.display = 'block';
                 }
-                if (controlsDiv) controlsDiv.style.display = 'block';
+                if (controlsDiv) controlsDiv.style.display = 'block'; 
 
                 loadAllAssets(() => {
                     if (typeof THREE === 'undefined' || typeof MindARThree === 'undefined') {
@@ -479,7 +532,7 @@ function createStarField() {
                         console.error("THREE or MindARThree (module) not loaded.");
                         return;
                     }
-                    initMindAR().catch(err => {
+                    initMindAR().catch(err => { 
                          if(loadingMessage) loadingMessage.innerHTML = "Failed to initialize AR. Check console, permissions, and .mind file path.<br><small>" + err.message + "</small>";
                          console.error("Failed to initialize AR:", err);
                     });
