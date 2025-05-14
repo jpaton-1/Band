@@ -3,18 +3,51 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
-    <title>A Band After Midnight - AR Bare Minimum Test</title>
+    <title>A Band After Midnight - AR Water Test</title>
     <style>
         body { margin: 0; font-family: sans-serif; overflow: hidden; background-color: #000; color: #fff; }
         #container { width: 100vw; height: 100vh; position: relative; overflow: hidden; }
-        #controls { display: none; /* Hide controls for this bare minimum test */ }
+        #controls {
+            position: absolute; top: 10px; left: 10px; z-index: 100;
+            background: rgba(0,0,0,0.6); padding: 8px; border-radius: 8px;
+            /* display: none; Re-enable controls */
+        }
+        #controls button {
+            display: block;
+            margin: 6px;
+            padding: 10px 12px;
+            color: white;
+            background-color: #444;
+            border: 1px solid #666;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        #controls button:hover { background-color: #666; }
+        #controls button.active { background-color: #007bff; border-color: #0056b3;}
+
         #loadingMessage {
             position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
             color: white; font-size: 1.5em; text-align: center;
             background: rgba(0,0,0,0.75); padding: 25px; border-radius: 10px;
-            z-index: 200; display: none;
+            z-index: 200;
+            display: none; 
         }
-        #startExperienceUI { /* ... same as before ... */ }
+
+        #startExperienceUI {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            z-index: 300; text-align: center; background: rgba(0,0,0,0.85);
+            padding: 30px; border-radius: 15px; max-width: 90%; box-sizing: border-box;
+        }
+        #startExperienceUI h2 { margin-top: 0; color: #00aaff; }
+        #startExperienceUI p { font-size: 1.1em; margin-bottom: 25px; line-height: 1.5; }
+        #startArButton {
+            padding: 15px 30px; font-size: 1.25em; cursor: pointer;
+            background-color: #007bff; color: white; border: none;
+            border-radius: 8px; font-weight: bold;
+            transition: background-color 0.3s ease;
+        }
+        #startArButton:hover { background-color: #0056b3; }
     </style>
 
     <script type="importmap">
@@ -30,15 +63,22 @@
 <body>
     <div id="startExperienceUI">
         <h2>Welcome to the AR Visualizer!</h2>
-        <p>This is a bare minimum test to display a single cube on the target.</p>
+        <p>
+            This experience uses your device's camera for Augmented Reality
+            and your microphone to make the visuals react to sound.
+            <br><br>
+            Please click "Start" and then <strong>allow camera and microphone access</strong> when your browser asks.
+        </p>
         <button id="startArButton">Start AR Experience</button>
     </div>
+
     <div id="loadingMessage">Loading AR Experience...</div>
-    <div id="controls"> <button id="btn-starfield">Star Field</button>
-        <button id="btn-clouds">Clouds</button>
-        <button id="btn-water">Flowing Water</button>
-        <button id="btn-fireflies">Fireflies</button>
-        <button id="btn-none">Clear Visuals</button>
+    <div id="controls">
+        <button id="btn-starfield" onclick="setActiveVisual('starfield')">Star Field (Placeholder)</button>
+        <button id="btn-clouds" onclick="setActiveVisual('clouds')">Clouds (Placeholder)</button>
+        <button id="btn-water" onclick="setActiveVisual('water')">Flowing Water (Test)</button>
+        <button id="btn-fireflies" onclick="setActiveVisual('fireflies')">Fireflies (Placeholder)</button>
+        <button id="btn-none" onclick="setActiveVisual('none')">Clear Visuals</button>
     </div>
     <div id="container"></div>
 
@@ -50,126 +90,283 @@
             console.log("DOM Content Loaded. Setting up listeners.");
             const container = document.querySelector("#container");
             const loadingMessage = document.getElementById('loadingMessage');
+            const controlsDiv = document.getElementById('controls'); // For showing it later
             const startExperienceUI = document.getElementById('startExperienceUI');
             const startArButton = document.getElementById('startArButton');
 
             let mindarThree;
             let anchor;
-            let debugCube = null; // Only one visual for this test
+            let currentVisual = null;
+            let currentVisualType = 'none';
+            const clock = new THREE.Clock();
 
-            const initMindAR = async () => {
-                console.log("initMindAR: Called.");
-                if(loadingMessage) loadingMessage.style.display = 'block';
-                if(loadingMessage) loadingMessage.innerHTML = "Initializing AR...<br>Please allow camera access.";
-                
-                // Basic audio setup for completeness, though not used for the cube
+            let analyser;
+            let dataArray;
+            const audioSummary = { /* ... */ }; // Re-add full audioSummary if needed by water for reactivity
+
+            async function startAudio() { 
+                if (audioSummary.audioContextActive) return;
+                if(loadingMessage) loadingMessage.innerHTML = "Requesting microphone access...";
                 try {
-                    await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-                    console.log("initMindAR: Microphone access granted (or already had it).");
+                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+                    const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                    const source = audioContext.createMediaStreamSource(stream);
+                    analyser = audioContext.createAnalyser();
+                    analyser.fftSize = 256;
+                    analyser.smoothingTimeConstant = 0.7;
+                    source.connect(analyser);
+                    const bufferLength = analyser.frequencyBinCount;
+                    dataArray = new Uint8Array(bufferLength);
+                    audioSummary.dataArrayValid = true;
+                    audioSummary.audioContextActive = true;
+                    console.log("Microphone access granted. Audio analyser active.");
                 } catch (err) {
-                    console.warn("initMindAR: Microphone access denied/error:", err.message);
+                    console.error("Error accessing microphone:", err);
+                    if(loadingMessage) loadingMessage.innerHTML = "Microphone access denied/error. Audio reactivity disabled.<br><small>" + err.message + "</small>";
                 }
+            }
+            function updateAudioSummary() {
+                 if (!analyser || !dataArray || !audioSummary.dataArrayValid) {
+                    audioSummary.overallAverage = 10; audioSummary.bassAverage = 10;
+                    audioSummary.midAverage = 10; audioSummary.trebleAverage = 10; return audioSummary;
+                }
+                analyser.getByteFrequencyData(dataArray);
+                let S=0,B=0,M=0,T=0,l=dataArray.length,bc=Math.floor(l*0.15),mc=Math.floor(l*0.5);
+                for(let i=0;i<l;i++){const v=dataArray[i]; S+=v; if(i<bc)B+=v;else if(i<mc)M+=v;else T+=v;}
+                audioSummary.overallAverage = S/l||0; audioSummary.bassAverage=bc>0?B/bc:0;
+                audioSummary.midAverage=(mc-bc)>0?M/(mc-bc):0; audioSummary.trebleAverage=(l-mc)>0?T/(l-mc):0;
+                return audioSummary;
+            }
 
+            // Placeholder textures will be loaded by loadAllAssets
+            let starTexture, cloudTexture, fireflyTexture; 
+
+            function loadAllAssets(callback) {
+                if(loadingMessage) loadingMessage.innerHTML = "Loading textures...";
+                const createPlaceholderTexture = (c='rgba(255,255,255,0.8)',s=64,sh='radial')=>{
+                    const cv=document.createElement('canvas');cv.width=s;cv.height=s;const ctx=cv.getContext('2d');
+                    if(sh==='radial'){const g=ctx.createRadialGradient(s/2,s/2,0,s/2,s/2,s/2);g.addColorStop(0,c);g.addColorStop(1,'rgba(0,0,0,0)');ctx.fillStyle=g;}else{ctx.fillStyle=c;}
+                    ctx.fillRect(0,0,s,s);return new THREE.CanvasTexture(cv);
+                };
+                starTexture=createPlaceholderTexture('rgba(230,230,255,0.9)',32); 
+                cloudTexture=createPlaceholderTexture('rgba(200,200,220,0.2)',128); 
+                fireflyTexture=createPlaceholderTexture('rgba(255,255,150,0.95)',48);
+                console.log("Textures initialized (using placeholders)."); 
+                callback();
+            }
+
+            const initMindAR = async () => { 
+                console.log("initMindAR called");
+                if(loadingMessage) loadingMessage.innerHTML = "Initializing AR...";
+                await startAudio(); 
                 if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-                    console.error("CRITICAL: getUserMedia not supported on this browser!");
-                    if(loadingMessage) loadingMessage.innerHTML = "Camera access not supported on this browser.";
+                    console.error("CRITICAL: getUserMedia not supported!");
+                    if(loadingMessage) loadingMessage.innerHTML = "Camera access not supported.";
                     return;
                 }
+                mindarThree = new MindARThree({
+                    container: container, imageTargetSrc: "./targets.mind", maxTrack: 1,
+                    uiLoading: "no", uiScanning: "no", uiError: "yes"
+                });
+                console.log("initMindAR: MindARThree instance created.");
+                const { renderer, scene, camera } = mindarThree;
+                anchor = mindarThree.addAnchor(0);
+                console.log("initMindAR: Anchor created:", anchor);
+                if (!anchor || !anchor.group) {
+                    console.error("CRITICAL: Failed to create anchor or anchor.group!");
+                    if(loadingMessage) loadingMessage.innerHTML = "Error: Failed to create AR anchor.";
+                    return;
+                }
+                // renderer.outputEncoding = THREE.sRGBEncoding; // Good for r151 if colors look off
+
+                anchor.onTargetFound = () => {
+                    console.log("EVENT: Target Found!");
+                    if(loadingMessage) loadingMessage.style.display = 'none';
+                    if (!currentVisual && currentVisualType === 'none') { 
+                        console.log("No current visual, setting 'water' as default on target found.");
+                        setActiveVisual('water'); // Default to water for this test
+                    } else {
+                        console.log("Target found, but a visual ("+ currentVisualType +") is already active or set.");
+                    }
+                };
+                anchor.onTargetLost = () => {
+                    console.log("EVENT: Target Lost.");
+                    // Optional: clear visuals or hide them
+                    // clearVisuals();
+                    // currentVisualType = 'none';
+                };
 
                 try {
-                    mindarThree = new MindARThree({
-                        container: container,
-                        imageTargetSrc: "./targets.mind", // CRITICAL: Ensure this path is correct!
-                        maxTrack: 1,
-                        uiLoading: "no", uiScanning: "no", uiError: "yes" // Show MindAR's own errors if any
-                    });
-                    console.log("initMindAR: MindARThree instance created.");
-
-                    const { renderer, scene, camera } = mindarThree;
-                    anchor = mindarThree.addAnchor(0);
-                    console.log("initMindAR: Anchor created. Anchor object:", anchor);
-                    if (!anchor || !anchor.group) {
-                        console.error("CRITICAL: Failed to create anchor or anchor.group!");
-                        if(loadingMessage) loadingMessage.innerHTML = "Error: Failed to create AR anchor.";
-                        return;
-                    }
-
-                    anchor.onTargetFound = () => {
-                        console.log("EVENT: Target Found!");
-                        if(loadingMessage) loadingMessage.style.display = 'none';
-
-                        if (debugCube) {
-                            console.log("Target Found: Debug cube already exists. Making visible if needed.");
-                            debugCube.visible = true;
-                        } else {
-                            console.log("Target Found: Creating debug cube...");
-                            const geometry = new THREE.BoxGeometry(0.3, 0.3, 0.3); // Size 0.3
-                            const material = new THREE.MeshBasicMaterial({ color: 0x00ff00, wireframe: true }); // Bright green wireframe
-                            debugCube = new THREE.Mesh(geometry, material);
-                            debugCube.position.set(0, 0.15, 0); // Position slightly above the target center
-
-                            if (anchor && anchor.group) {
-                                anchor.group.add(debugCube);
-                                console.log("Target Found: Debug cube ADDED to anchor.group. Position:", debugCube.position);
-                            } else {
-                                console.error("Target Found: Cannot add debug cube, anchor or anchor.group is invalid!");
-                            }
-                        }
-                    };
-
-                    anchor.onTargetLost = () => {
-                        console.log("EVENT: Target Lost.");
-                        if (debugCube) {
-                            console.log("Target Lost: Hiding debug cube.");
-                            // Instead of removing, just hide it to simplify logic for now
-                            // If you want to remove:
-                            // if (anchor && anchor.group) anchor.group.remove(debugCube);
-                            // debugCube = null;
-                            debugCube.visible = false;
-                        }
-                    };
-
-                    console.log("initMindAR: Attempting mindarThree.start()...");
+                    console.log("Attempting mindarThree.start()...");
                     await mindarThree.start(); 
-                    console.log("initMindAR: mindarThree.start() successful. Renderer animation loop starting.");
+                    console.log("mindarThree.start() successful. Renderer animation loop starting.");
                     if(loadingMessage) loadingMessage.innerHTML = "Scanning for target...";
-
+                    if(controlsDiv) controlsDiv.style.display = 'block'; // Show controls now
 
                     renderer.setAnimationLoop(() => {
-                        if (!renderer || !scene || !camera) {
-                            console.error("Render loop: Renderer, scene, or camera is missing!");
-                            return;
+                        if (!renderer || !scene || !camera) { return; } // Basic guard
+                        const delta = clock.getDelta();
+                        const elapsedTime = clock.getElapsedTime();
+                        const currentAudioData = updateAudioSummary();
+                        if (anchor && anchor.visible && currentVisual && currentVisual.update) {
+                            currentVisual.update(currentAudioData, elapsedTime, delta);
                         }
                         renderer.render(scene, camera);
                     });
-
                 } catch (e) {
                     console.error("CRITICAL Error during MindAR initialization or start:", e);
                     if(loadingMessage) loadingMessage.innerHTML = "Critical Error starting AR. Check console.<br><small>" + e.message + "</small>";
                 }
             };
 
-            const beginARExperience = () => {
+            function clearVisuals() {
+                console.log("clearVisuals called. Current visual:", currentVisual ? currentVisual.type : "null");
+                if (anchor && currentVisual && currentVisual.mesh) {
+                    anchor.group.remove(currentVisual.mesh);
+                    console.log("Removed mesh from anchor.group:", currentVisual.mesh);
+                    if (currentVisual.mesh.geometry) {
+                        currentVisual.mesh.geometry.dispose();
+                    }
+                    if (currentVisual.mesh.material) {
+                        if (Array.isArray(currentVisual.mesh.material)) {
+                            currentVisual.mesh.material.forEach(m => m.dispose());
+                        } else {
+                            currentVisual.mesh.material.dispose();
+                        }
+                    }
+                     console.log("Disposed geo/mat for", currentVisual.type);
+                } else {
+                    // console.log("clearVisuals: No current visual or mesh to clear, or anchor not ready.");
+                }
+                currentVisual = null; // Always nullify
+            }
+            
+            window.setActiveVisual = (type) => {
+                console.log(`setActiveVisual called for type: "${type}". Current type: "${currentVisualType}", Current visual exists: ${!!currentVisual}`);
+                
+                if (currentVisualType === type && type !== 'none' && currentVisual) {
+                     console.log(`Visual type "${type}" is already active. No change.`);
+                     return; 
+                } else if (currentVisualType === 'none' && type === 'none' && !currentVisual) {
+                    console.log("Already cleared, type 'none' requested. Doing nothing.");
+                    return;
+                }
+
+                clearVisuals(); 
+                currentVisualType = type; 
+
+                document.querySelectorAll('#controls button').forEach(btn => btn.classList.remove('active'));
+                const activeBtn = document.getElementById(`btn-${type === 'none' ? 'btn-none' : `btn-${type}`}`);
+                if (activeBtn) activeBtn.classList.add('active');
+
+                if (!anchor && type !== 'none') {
+                    console.warn("setActiveVisual: AR anchor not ready for type: " + type);
+                    currentVisualType = 'none'; return;
+                }
+                
+                console.log("setActiveVisual: Proceeding to create visual of type:", type);
+                switch (type) {
+                    case 'starfield': createStarField(); break;
+                    case 'clouds': createClouds(); break;
+                    case 'water': createFlowingWater(); break;
+                    case 'fireflies': createFireflies(); break;
+                    case 'none': 
+                        console.log("Visuals explicitly set to 'none'.");
+                        currentVisualType = 'none'; break; 
+                    default:
+                        console.warn("Unknown visual type requested:", type); currentVisualType = 'none';
+                }
+                
+                if (currentVisual) {
+                     currentVisualType = currentVisual.type; 
+                     console.log("Successfully set active visual:", currentVisual.type);
+                } else if (type !== 'none') {
+                    console.warn("Failed to create visual for type:", type, "- currentVisual remained null.");
+                    currentVisualType = 'none'; 
+                }
+            };
+
+            const shaderNoiseFunctions = `float rand(vec2 co){ return fract(sin(dot(co.xy ,vec2(12.9898,78.233))) * 43758.5453); } float noise(vec2 p) { vec2 i = floor(p); vec2 f = fract(p); f = f*f*(3.0-2.0*f); float r1 = mix(rand(i), rand(i + vec2(1.0,0.0)),f.x); float r2 = mix(rand(i + vec2(0.0,1.0)), rand(i + vec2(1.0,1.0)),f.x); return mix(r1,r2,f.y); }`;
+
+            // --- PLACEHOLDER VISUALS (Except Water) ---
+            function createStarField() {
+                console.log("createStarField (Placeholder) called. No visual created.");
+                currentVisual = null; // Explicitly ensure no visual is set
+            }
+            function createClouds() {
+                console.log("createClouds (Placeholder) called. No visual created.");
+                currentVisual = null;
+            }
+            function createFireflies() {
+                console.log("createFireflies (Placeholder) called. No visual created.");
+                currentVisual = null;
+            }
+
+            // --- FLOWING WATER (This should be the visible one) ---
+            const waterVertexShader = shaderNoiseFunctions + `varying vec2 vUv; uniform float uTime; uniform float uFrequency; uniform float uAmplitude; void main() { vUv = uv; vec3 pos = position; float time = uTime * 0.15; pos.z += sin(pos.x * uFrequency + time) * uAmplitude * 0.6; pos.z += cos(pos.y * uFrequency * 0.7 + time * 1.3) * uAmplitude * 0.4; pos.z += noise(vec2(pos.x*0.15 + time*0.2, pos.y*0.15 + time*0.1)) * uAmplitude * 0.8; gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0); }`;
+            const waterFragmentShader = shaderNoiseFunctions + `varying vec2 vUv; uniform float uTime; uniform vec3 uWaterColorDeep; uniform vec3 uWaterColorSurface; uniform float uOpacity; void main() { float time = uTime * 0.03; vec2 uvT = vUv; uvT.x += noise(vUv * 2.5 + time) * 0.02; uvT.y += noise(vUv * 2.5 - time * 1.2) * 0.02; float n = abs(noise(uvT * 5.0 + time * 0.6)); vec3 waterColor = mix(uWaterColorDeep, uWaterColorSurface, smoothstep(0.25, 0.65, n)); float sparkleN = noise(vUv * 20.0 + time * 2.5); float sparkle = pow(max(0.0, sparkleN - 0.6), 6.0) * 0.8; sparkle = smoothstep(0.0, 0.1, sparkle); gl_FragColor = vec4(waterColor + sparkle, (n * 0.35 + 0.45) * uOpacity); }`;
+            
+            function createFlowingWater() {
+                console.log("createFlowingWater called");
+                const geometry = new THREE.PlaneGeometry(1.5, 1.5, 20, 20); 
+                const material = new THREE.ShaderMaterial({ 
+                    vertexShader: waterVertexShader, fragmentShader: waterFragmentShader,
+                    uniforms: {
+                        uTime: { value: 0.0 }, uFrequency: { value: 2.5 }, 
+                        uAmplitude: { value: 0.1 }, 
+                        uWaterColorDeep: { value: new THREE.Color(0x001e42) },
+                        uWaterColorSurface: { value: new THREE.Color(0x30a0f0) },
+                        uOpacity: { value: 0.65 }
+                    },
+                    transparent: true, depthWrite: false, side: THREE.DoubleSide
+                });
+                const waterMesh = new THREE.Mesh(geometry, material);
+                waterMesh.position.y = 0.05; 
+                waterMesh.rotation.x = -Math.PI / 2.8; 
+
+                if (anchor && anchor.group) {
+                    anchor.group.add(waterMesh); 
+                    console.log("FlowingWater mesh ADDED to anchor.group");
+                } else { 
+                    console.error("FlowingWater: Anchor not ready! Cannot add mesh."); 
+                    currentVisual = null; // Ensure currentVisual is null if creation fails
+                    return; 
+                }
+                currentVisual = { 
+                    mesh: waterMesh, type: 'water', 
+                    update: (audioData, time) => {  
+                        material.uniforms.uTime.value = time;
+                        material.uniforms.uFrequency.value = 1.5 + (audioData.midAverage / 255) * 4.0;
+                        material.uniforms.uAmplitude.value = 0.02 + (audioData.bassAverage / 255) * 0.10; // Using reduced amplitude that worked
+                        material.uniforms.uOpacity.value = 0.4 + (audioData.overallAverage / 255) * 0.45;
+                    }
+                };
+            }
+
+            const beginARExperience = () => { 
                 console.log("UI: 'Start AR Experience' button clicked.");
                 if (startExperienceUI) startExperienceUI.style.display = 'none';
-                if (loadingMessage) loadingMessage.style.display = 'block';
+                if (loadingMessage) { loadingMessage.innerHTML = "Loading AR assets..."; loadingMessage.style.display = 'block';}
+                if (controlsDiv) controlsDiv.style.display = 'block'; // Show controls here
                 
-                // Call initMindAR directly. No loadAllAssets for this bare minimum test.
-                initMindAR().catch(err => {
-                     console.error("CRITICAL: initMindAR promise rejected:", err);
-                     if(loadingMessage) loadingMessage.innerHTML = "Failed to initialize AR. Check console.<br><small>" + err.message + "</small>";
+                loadAllAssets(() => { // loadAllAssets is back
+                    if (typeof THREE === 'undefined' || typeof MindARThree === 'undefined') {
+                        if(loadingMessage) loadingMessage.innerHTML = "Error: Critical libraries (THREE or MindAR) not loaded...";
+                        console.error("THREE or MindARThree (module) not loaded."); return;
+                    }
+                    initMindAR().catch(err => { 
+                         if(loadingMessage) loadingMessage.innerHTML = "Failed to initialize AR...<br><small>" + err.message + "</small>";
+                         console.error("Failed to initialize AR:", err);
+                    });
                 });
             };
 
             if (startArButton) {
-                console.log("Adding click listener to 'Start AR' button.");
-                startArButton.addEventListener('click', beginARExperience);
-            } else {
+                 console.log("Adding click listener to 'Start AR' button.");
+                 startArButton.addEventListener('click', beginARExperience);
+            } else { 
                 console.error("CRITICAL: Start AR Button not found in DOM!");
-                if(loadingMessage) { 
-                    loadingMessage.innerHTML = "Error: Start button missing. Cannot initialize.";
-                    loadingMessage.style.display = 'block'; 
-                }
+                if(loadingMessage) { loadingMessage.innerHTML = "Error: Start button missing..."; loadingMessage.style.display = 'block'; }
             }
         });
     </script>
