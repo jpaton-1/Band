@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no, viewport-fit=cover">
-    <title>Gyro Shader Experience - Switchable</title>
+    <title>Gyro Shader Experience - Switchable V2</title>
     <style>
         body { margin: 0; font-family: sans-serif; overflow: hidden; background-color: #000; color: #fff; }
         #container { width: 100vw; height: 100vh; position: absolute; top: 0; left: 0; z-index: 1; }
@@ -12,7 +12,7 @@
             object-fit: cover; z-index: 0;
         }
         #controls { 
-            display: block; /* Re-enable controls */
+            display: block; 
             position: absolute; top: 10px; left: 10px; z-index: 100;
             background: rgba(0,0,0,0.6); padding: 8px; border-radius: 8px;
         }
@@ -24,7 +24,19 @@
         #controls button:hover { background-color: #666; }
         #controls button.active { background-color: #007bff; border-color: #0056b3;}
 
-        #loadingMessage, #startExperienceUI { /* ... same ... */ }
+        #loadingMessage, #startExperienceUI {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            text-align: center; background: rgba(0,0,0,0.85);
+            padding: 30px; border-radius: 15px; z-index: 200;
+        }
+        #loadingMessage { display: none; font-size: 1.5em; }
+        #startExperienceUI h2 { margin-top: 0; color: #00aaff; }
+        #startExperienceUI p { font-size: 1.1em; margin-bottom: 25px; line-height: 1.5; }
+        #startArButton {
+            padding: 15px 30px; font-size: 1.25em; cursor: pointer;
+            background-color: #007bff; color: white; border: none;
+            border-radius: 8px; font-weight: bold;
+        }
     </style>
 
     <script type="importmap">
@@ -37,7 +49,17 @@
     </script>
 </head>
 <body>
-    <div id="startExperienceUI"> </div>
+    <div id="startExperienceUI">
+        <h2>Gyro Shader Experience</h2>
+        <p>
+            This experience uses your phone's camera for the background,
+            motion sensors to look around, and an audio-reactive shader.
+            <br><br>
+            Please click "Start" and allow all requested permissions.
+        </p>
+        <button id="startArButton">Start Experience</button>
+    </div>
+
     <div id="loadingMessage">Loading...</div>
     <video id="videoBG" autoplay playsinline muted style="display:none;"></video>
     <div id="controls" style="display:none;">
@@ -54,10 +76,10 @@
         let scene, camera, renderer, clock, deviceControls;
         let videoTexture, videoElement;
         
-        let shaderPlane; // Single plane for all shader visuals
-        let currentShaderMaterial; // The active shader material
+        let shaderPlane; 
+        let currentShaderMaterial; 
 
-        let currentVisualType = 'none'; // To track which shader is active
+        let currentVisualType = 'none'; 
 
         const loadingMessage = document.getElementById('loadingMessage');
         const startExperienceUI = document.getElementById('startExperienceUI');
@@ -65,11 +87,11 @@
         const controlsDiv = document.getElementById('controls');
         videoElement = document.getElementById('videoBG');
 
-        // --- Audio Analysis (same as before) ---
         let analyser; let dataArray;
         const audioSummary = { overallAverage: 0, bassAverage: 0, midAverage: 0, trebleAverage: 0, dataArrayValid: false, audioContextActive: false };
-        async function startAudio() { /* ... same ... */ 
-             if (audioSummary.audioContextActive) return;
+        
+        async function startAudio() { 
+            if (audioSummary.audioContextActive) return;
             console.log("Requesting microphone access...");
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
@@ -89,7 +111,8 @@
                 if(loadingMessage) loadingMessage.innerHTML += "<br><small>Microphone access denied. Audio reactivity disabled.</small>";
             }
         }
-        function updateAudioSummary() { /* ... same, ensures 0-1 normalization ... */
+
+        function updateAudioSummary() {
             if (!analyser || !dataArray || !audioSummary.dataArrayValid) {
                 audioSummary.overallAverage = 0; audioSummary.bassAverage = 0; audioSummary.midAverage = 0; audioSummary.trebleAverage = 0;
                 return audioSummary;
@@ -102,7 +125,7 @@
             return audioSummary;
         }
         
-        async function initVideoStream() { /* ... same ... */ 
+        async function initVideoStream() { 
             console.log("initVideoStream: Attempting to get camera feed.");
             if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
                 try {
@@ -128,14 +151,10 @@
             }
         }
 
-        // --- Shader Definitions ---
         const commonVertexShader = `
             varying vec2 vUv;
             void main() {
                 vUv = uv;
-                // This makes the quad always fill the screen, regardless of camera position/rotation for the shader plane itself.
-                // Useful if the shader plane is a child of the camera or if an orthographic camera is used for it.
-                // For a plane in world space viewed by perspective camera, use standard projection:
                 gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
             }
         `;
@@ -155,7 +174,7 @@
                         o_shadertoy = vec4(1.0,2.0,3.0,0.0); 
                         z_shadertoy = o_shadertoy;          
                         vec2 v_shadertoy = u_resolution.xy;
-                        float t = u_time + u_bass * 5.0 + u_overall_avg * 2.0; // Audio influencing time
+                        float t = u_time + u_bass * 5.0 + u_overall_avg * 2.0; 
 
                         for (float a = .5, i = 0.0; 
                             ++i < 19.; 
@@ -175,11 +194,13 @@
                         gl_FragColor = vec4(o_shadertoy.rgb, 1.0);
                     }
                 `,
-                initUniforms: () => ({
-                    u_time: { value: 0.0 },
-                    u_resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
-                    u_bass: { value: 0.0 }, u_mid: { value: 0.0 }, u_treble: { value: 0.0 }, u_overall_avg: { value: 0.0 }
-                })
+                initUniforms: function() { // Changed to standard function
+                    return {
+                        u_time: { value: 0.0 },
+                        u_resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
+                        u_bass: { value: 0.0 }, u_mid: { value: 0.0 }, u_treble: { value: 0.0 }, u_overall_avg: { value: 0.0 }
+                    };
+                }
             },
             'waveform': {
                 fragmentShader: `
@@ -189,83 +210,68 @@
                     uniform float u_bass; uniform float u_mid; uniform float u_treble; uniform float u_overall_avg;
                     varying vec2 vUv;
 
-                    // "Waveform" by @XorDev - Adapted
                     void main() {
                         vec2 R = u_resolution.xy;
-                        vec2 U = vUv * R; // Current fragment coord in pixels
+                        // vec2 U = vUv * R; // Not used directly, U is derived later in this shader
 
-                        vec4 O_accum = vec4(0.0); // Accumulator for color
-                        float i_loop = 0.0, d_step, z_depth = 0.0, r_reflect;
+                        vec4 O_accum = vec4(0.0); 
+                        float i_loop = 0.0, d_step = 0.01, z_depth = 0.0, r_reflect = 0.0; // Initialize d_step and r_reflect
                         
-                        // Modified audio influence:
                         float time_adjusted = u_time + u_overall_avg * 3.0;
 
-                        for(; i_loop++<90.0; // Raymarch 90 steps
-                            // Accumulate color (Pick color and attenuate)
-                            O_accum += (cos(z_depth*.5 + time_adjusted + u_bass * 2.0 + vec4(0,2,4,3)) + 1.3 ) / d_step / z_depth
+                        for(; i_loop++<90.0; 
+                           
+                            O_accum += (cos(z_depth*.5 + time_adjusted + u_bass * 2.0 + vec4(0,2,4,3)) + 1.3 ) / max(0.001, d_step) / max(0.001, z_depth) // Avoid division by zero
                         ) {
-                            // Raymarch sample point 'p'
-                            // Original: vec3 p = z * normalize(vec3(I+I,0) - iResolution.xyy);
-                            // I = fragCoord = vUv * u_resolution
-                            // iResolution.xyy = vec3(u_resolution.x, u_resolution.y, u_resolution.y)
-                            // The ray direction setup from shadertoy is often to map screen coords to a normalized view.
-                            // Let's use a simpler ray direction for a start or adapt carefully.
-                            // A common way for a ray direction through pixel (vUv):
-                            vec2 uv_norm = vUv * 2.0 - 1.0; // -1 to 1
-                            uv_norm.x *= R.x / R.y; // Aspect correction
-                            vec3 rayDir = normalize(vec3(uv_norm, -1.0)); // Ray pointing into the screen
-
+                            vec2 uv_norm = vUv * 2.0 - 1.0; 
+                            uv_norm.x *= R.x / R.y; 
+                            vec3 rayDir = normalize(vec3(uv_norm, -1.0)); 
                             vec3 p = z_depth * rayDir;
                             
-                            // Shift camera and get reflection coordinates
-                            // Original: r = max(-++p, 0.).y; -> This modifies p, be careful.
-                            // Let's try to keep p immutable for a moment in the ++p part for clarity.
                             vec3 p_temp_for_r = p;
-                            p_temp_for_r.y += 1.0; // Simulating part of -++p for y component if p.y starts negative relative to some surface
-                                                   // This part is very context dependent on the scene being raymarched.
-                                                   // The original shader implies a scene where p.y can be negative.
-                            
-                            r_reflect = max(-p_temp_for_r.y, 0.0); // Simpler interpretation of reflection trigger
-                                                              // The original was likely specific to its scene structure.
+                            // The original reflection logic is very specific and might need more context.
+                            // This is a simplified interpretation.
+                            p_temp_for_r.y = p.y + 1.0; // Simulate -++p.y behavior for reflection check assuming p.y starts negative
+                            r_reflect = max(-p_temp_for_r.y, 0.0); 
 
-                            // Mirror
-                            p.y += r_reflect + r_reflect;
+                            p.y += r_reflect + r_reflect; // Mirror based on r_reflect
                             
-                            // Sine waves
-                            for(d_step=1.; d_step<30.0; d_step+=d_step) // d_step was 'd'
-                                p.y += cos(p*d_step + 2.*time_adjusted*cos(d_step + u_mid * 2.0)+z_depth).x/d_step;
+                            float d_inner_loop = 1.0; // Temporary for inner loop d
+                            for(; d_inner_loop<30.0; d_inner_loop+=d_inner_loop)
+                                p.y += cos(p*d_inner_loop + 2.*time_adjusted*cos(d_inner_loop + u_mid * 2.0)+z_depth).x/d_inner_loop;
                             
-                            // Step forward (reflections are softer)
-                            // Original: z += d = (.1*r+abs(p.y-1.)/(++r*r) + max(d=p.z+3.,-d*.1))/8.;
-                            // This is complex distance estimator. Let's simplify or be careful.
-                            // 'd' was d_step from inner loop.
-                            // The 'd=p.z+3' is a distance function to a plane at z=-3
-                            float dist_to_plane = p.z + 3.0 + u_treble * 2.0; // Audio influence
-                            float scene_dist = abs(p.y-1.0) / ( (r_reflect + 1.0)*(r_reflect + 1.0) ); // Simplified from original
-                            scene_dist = min(scene_dist, dist_to_plane);
-                            d_step = (0.1 * r_reflect + scene_dist + max(dist_to_plane, -dist_to_plane*0.1) ) / 8.0;
-                            d_step = max(0.01, d_step); // Ensure minimum step
+                            float dist_to_plane = p.z + 3.0 + u_treble * 2.0; 
+                            float scene_dist_term = abs(p.y-1.0);
+                            if (r_reflect > -1.0) { // Avoid division by zero if r_reflect was -1 then incremented
+                                scene_dist_term /= ( (r_reflect + 1.0)*(r_reflect + 1.0) ); 
+                            } else {
+                                scene_dist_term = 1e5; // Effectively infinite if denominator would be zero
+                            }
+                            
+                            d_step = (0.1 * r_reflect + scene_dist_term + max(dist_to_plane, -dist_to_plane*0.1) ) / 8.0;
+                            d_step = max(0.01, d_step); 
                             z_depth += d_step;
                         }
-                        // Tanh tonemapping
                         O_accum = tanh(O_accum/9e2);
                         gl_FragColor = vec4(O_accum.rgb, 1.0);
                     }
                 `,
-                initUniforms: () => ({
-                    u_time: { value: 0.0 },
-                    u_resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
-                    u_bass: { value: 0.0 }, u_mid: { value: 0.0 }, u_treble: { value: 0.0 }, u_overall_avg: { value: 0.0 }
-                })
+                initUniforms: function() { // Changed to standard function
+                    return {
+                        u_time: { value: 0.0 },
+                        u_resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
+                        u_bass: { value: 0.0 }, u_mid: { value: 0.0 }, u_treble: { value: 0.0 }, u_overall_avg: { value: 0.0 }
+                    };
+                }
             }
-        };
+        }; // End of shaderVisuals object
         
         function initThreeJS() {
             console.log("initThreeJS: Initializing Scene, Camera, Renderer...");
             scene = new THREE.Scene();
             clock = new THREE.Clock();
             camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-            camera.position.set(0,0,0.1); // Important for DeviceOrientationControls relative movement
+            camera.position.set(0,0,0.1); 
 
             renderer = new THREE.WebGLRenderer({ antialias: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
@@ -274,17 +280,15 @@
             deviceControls = new DeviceOrientationControls(camera);
             console.log("initThreeJS: DeviceOrientationControls initialized.");
 
-            // Create a single plane and material that we will update
-            const planeGeometry = new THREE.PlaneGeometry(20, 20 * (window.innerHeight/window.innerWidth)); // Adjust size as needed
+            const planeGeometry = new THREE.PlaneGeometry(20, 20 * (window.innerHeight/window.innerWidth)); 
             currentShaderMaterial = new THREE.ShaderMaterial({
                 vertexShader: commonVertexShader,
-                // Fragment shader and uniforms will be set by setActiveVisual
-                side: THREE.DoubleSide // Useful for some shaders
+                side: THREE.DoubleSide 
             });
             shaderPlane = new THREE.Mesh(planeGeometry, currentShaderMaterial);
-            shaderPlane.position.set(0, 0, -5); // Position it in front of the camera
+            shaderPlane.position.set(0, 0, -5); 
             scene.add(shaderPlane);
-            shaderPlane.visible = false; // Initially hidden until a shader is chosen
+            shaderPlane.visible = false; 
 
             window.addEventListener('resize', onWindowResize, false);
             console.log("initThreeJS: Complete.");
@@ -294,14 +298,14 @@
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
             renderer.setSize(window.innerWidth, window.innerHeight);
-            if (currentShaderMaterial && currentShaderMaterial.uniforms.u_resolution) {
+            if (currentShaderMaterial && currentShaderMaterial.uniforms && currentShaderMaterial.uniforms.u_resolution) {
                 currentShaderMaterial.uniforms.u_resolution.value.set(window.innerWidth, window.innerHeight);
             }
-             // Adjust plane aspect ratio on resize
             if (shaderPlane) {
                 const aspect = window.innerWidth / window.innerHeight;
-                shaderPlane.geometry.dispose(); // Dispose old geometry
-                shaderPlane.geometry = new THREE.PlaneGeometry(20, 20 / aspect); // Keep width 20, adjust height
+                // Ensure geometry exists before disposing and re-creating
+                if (shaderPlane.geometry) shaderPlane.geometry.dispose(); 
+                shaderPlane.geometry = new THREE.PlaneGeometry(20, 20 / aspect, 1, 1); // Added segments
             }
         }
 
@@ -313,7 +317,7 @@
             if (deviceControls) deviceControls.update();
             const audioData = updateAudioSummary();
 
-            if (currentShaderMaterial && currentShaderMaterial.uniforms.u_time) { // Check if uniforms exist
+            if (currentShaderMaterial && currentShaderMaterial.uniforms && currentShaderMaterial.uniforms.u_time && shaderPlane && shaderPlane.visible) { 
                 currentShaderMaterial.uniforms.u_time.value = elapsedTime;
                 currentShaderMaterial.uniforms.u_bass.value = audioData.bassAverage;
                 currentShaderMaterial.uniforms.u_mid.value = audioData.midAverage;
@@ -342,19 +346,23 @@
                 return;
             }
 
+            // Avoid redundant work if already active, but allow re-init if needed (e.g. for debug)
+            // For now, if type is the same and plane is visible, assume it's fine.
             if (currentVisualType === type && shaderPlane && shaderPlane.visible) {
                 console.log("Visual already active:", type);
-                return;
+                return; 
             }
             
-            currentShaderMaterial.vertexShader = commonVertexShader; // Or visualConfig.vertexShader if different
+            currentShaderMaterial.vertexShader = commonVertexShader; 
             currentShaderMaterial.fragmentShader = visualConfig.fragmentShader;
-            currentShaderMaterial.uniforms = THREE.UniformsUtils.clone(visualConfig.initUniforms());
-            // Ensure resolution is current for new material
-            currentShaderMaterial.uniforms.u_resolution.value.set(window.innerWidth, window.innerHeight);
-            currentShaderMaterial.needsUpdate = true;
+            currentShaderMaterial.uniforms = THREE.UniformsUtils.clone(visualConfig.initUniforms()); 
+            currentShaderMaterial.uniforms.u_resolution.value.set(window.innerWidth, window.innerHeight); 
+            currentShaderMaterial.needsUpdate = true; 
             
-            if (shaderPlane) shaderPlane.visible = true;
+            if (shaderPlane) {
+                 shaderPlane.material = currentShaderMaterial; // Ensure the plane uses the updated material instance
+                 shaderPlane.visible = true;
+            }
             currentVisualType = type;
 
             document.querySelectorAll('#controls button').forEach(btn => btn.classList.remove('active'));
@@ -362,7 +370,7 @@
             console.log("Switched to visual:", type);
         };
         
-        async function requestPermissionsAndStart() { /* ... same permission logic ... */ 
+        async function requestPermissionsAndStart() {
             console.log("Requesting permissions and starting...");
             if(loadingMessage) loadingMessage.style.display = 'block';
             if(loadingMessage) loadingMessage.innerHTML = "Requesting Permissions...";
@@ -400,11 +408,21 @@
             if(loadingMessage) loadingMessage.style.display = 'none';
             if(controlsDiv) controlsDiv.style.display = 'block'; 
             
-            setActiveVisual('shader1'); // Default to first shader
+            setActiveVisual('shader1'); 
             animate(); 
         }
 
-        if (startArButton) { /* ... same ... */ }
+        if (startArButton) {
+            startArButton.addEventListener('click', () => {
+                if (startExperienceUI) startExperienceUI.style.display = 'none';
+                if (loadingMessage) loadingMessage.style.display = 'block';
+                requestPermissionsAndStart().catch(err => {
+                    console.error("Error in requestPermissionsAndStart chain:", err);
+                    if(loadingMessage) loadingMessage.innerHTML = "Failed to start experience: " + err.message;
+                });
+            });
+        } else { console.error("Start Button not found!"); }
+
         });
     </script>
 </body>
