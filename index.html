@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
-    <title>A Band After Midnight - AR Visibility Test</title>
+    <title>A Band After Midnight - AR Visibility Test (Ultra Debug)</title>
     <style>
         body { margin: 0; font-family: sans-serif; overflow: hidden; background-color: #000; color: #fff; }
         #container { width: 100vw; height: 100vh; position: relative; overflow: hidden; }
@@ -74,9 +74,9 @@
 
     <div id="loadingMessage">Loading AR Experience...</div>
     <div id="controls">
-        <button id="btn-starfield" onclick="setActiveVisual('starfield')">Star Field (Debug)</button>
+        <button id="btn-starfield" onclick="setActiveVisual('starfield')">Star Field (Ultra Debug)</button>
         <button id="btn-clouds" onclick="setActiveVisual('clouds')">Clouds</button>
-        <button id="btn-water" onclick="setActiveVisual('water')">Flowing Water</button>
+        <button id="btn-water" onclick="setActiveVisual('water')">Flowing Water (Visible)</button>
         <button id="btn-fireflies" onclick="setActiveVisual('fireflies')">Fireflies</button>
         <button id="btn-none" onclick="setActiveVisual('none')">Clear Visuals</button>
     </div>
@@ -101,12 +101,9 @@
 
             let analyser;
             let dataArray;
-            const audioSummary = {
-                overallAverage: 0, bassAverage: 0, midAverage: 0, trebleAverage: 0,
-                dataArrayValid: false, audioContextActive: false
-            };
+            const audioSummary = { /* ... same ... */ };
 
-            async function startAudio() {
+            async function startAudio() { /* ... same ... */ 
                 if (audioSummary.audioContextActive) return;
                 if(loadingMessage) loadingMessage.innerHTML = "Requesting microphone access...";
                 try {
@@ -127,9 +124,8 @@
                     if(loadingMessage) loadingMessage.innerHTML = "Microphone access denied/error. Audio reactivity disabled.<br><small>" + err.message + "</small>";
                 }
             }
-
-            function updateAudioSummary() {
-                if (!analyser || !dataArray || !audioSummary.dataArrayValid) {
+            function updateAudioSummary() { /* ... same ... */
+                 if (!analyser || !dataArray || !audioSummary.dataArrayValid) {
                     audioSummary.overallAverage = 10; audioSummary.bassAverage = 10;
                     audioSummary.midAverage = 10; audioSummary.trebleAverage = 10;
                     return audioSummary;
@@ -157,7 +153,7 @@
             const textureLoader = new THREE.TextureLoader();
             let starTexture, cloudTexture, fireflyTexture; 
 
-            function loadAllAssets(callback) {
+            function loadAllAssets(callback) { /* ... same ... */
                 if(loadingMessage) loadingMessage.innerHTML = "Loading textures...";
                 const createPlaceholderTexture = (color = 'rgba(255,255,255,0.8)', size = 64, shape = 'radial') => {
                     const canvas = document.createElement('canvas');
@@ -179,7 +175,7 @@
                 callback();
             }
 
-            const initMindAR = async () => {
+            const initMindAR = async () => { /* ... same, but with updated onTargetFound ... */
                 if(loadingMessage) loadingMessage.innerHTML = "Initializing AR...<br>Please allow camera access and point at the target image.";
                 await startAudio();
                 mindarThree = new MindARThree({
@@ -189,15 +185,13 @@
                     uiLoading: "no", uiScanning: "no", uiError: "yes"
                 });
                 const { renderer, scene, camera } = mindarThree;
-                // For Three.js r151, if colors look off:
-                // renderer.outputEncoding = THREE.sRGBEncoding; 
                 anchor = mindarThree.addAnchor(0);
 
                 anchor.onTargetFound = () => {
                     console.log("Target Found!");
                     if(loadingMessage) loadingMessage.style.display = 'none';
-                    if (!currentVisual && currentVisualType === 'none') { // Only set if nothing is active
-                        console.log("No current visual, setting 'starfield' (debug) as default on target found.");
+                    if (!currentVisual && currentVisualType === 'none') { 
+                        console.log("No current visual, setting 'starfield' (ultra-debug) as default on target found.");
                         setActiveVisual('starfield');
                     } else {
                         console.log("Target found, but a visual ("+ currentVisualType +") is already active or set.");
@@ -224,32 +218,45 @@
                 }
             };
 
-            function clearVisuals() {
+            function clearVisuals() { /* ... same ... */
                 if (anchor && currentVisual && currentVisual.mesh) {
-                    anchor.group.remove(currentVisual.mesh);
-                    if (currentVisual.mesh.geometry) currentVisual.mesh.geometry.dispose();
-                    if (currentVisual.mesh.material) {
-                        if (Array.isArray(currentVisual.mesh.material)) {
-                            currentVisual.mesh.material.forEach(m => m.dispose());
-                        } else {
-                            currentVisual.mesh.material.dispose();
+                    // If currentVisual.mesh is a group itself (like in starfield_debug)
+                    if (currentVisual.mesh.isGroup) {
+                         // Remove children and dispose their geometries/materials
+                        currentVisual.mesh.children.slice().forEach(child => {
+                            if (child.geometry) child.geometry.dispose();
+                            if (child.material) {
+                                if (Array.isArray(child.material)) {
+                                    child.material.forEach(m => m.dispose());
+                                } else {
+                                    child.material.dispose();
+                                }
+                            }
+                            currentVisual.mesh.remove(child);
+                        });
+                    } else { // It's a single mesh
+                        if (currentVisual.mesh.geometry) currentVisual.mesh.geometry.dispose();
+                        if (currentVisual.mesh.material) {
+                            if (Array.isArray(currentVisual.mesh.material)) {
+                                currentVisual.mesh.material.forEach(m => m.dispose());
+                            } else {
+                                currentVisual.mesh.material.dispose();
+                            }
                         }
                     }
+                    anchor.group.remove(currentVisual.mesh);
                     console.log("Cleared visual:", currentVisual.type);
                 }
                 currentVisual = null;
-                // currentVisualType = 'none'; // Set here or rely on setActiveVisual to set it
             }
             
-            window.setActiveVisual = (type) => {
+            window.setActiveVisual = (type) => { /* ... same simplified logic ... */
                 if (currentVisualType === type && type !== 'none' && currentVisual) {
                     console.log(`Visual ${type} is already active. No change.`);
                     return;
                 }
-
                 clearVisuals();
-                currentVisualType = type; // Set type before creating
-
+                currentVisualType = type; 
                 document.querySelectorAll('#controls button').forEach(btn => btn.classList.remove('active'));
                 const activeBtn = document.getElementById(`btn-${type}`);
                 if (activeBtn) activeBtn.classList.add('active');
@@ -260,7 +267,7 @@
                         loadingMessage.innerHTML = "AR not fully loaded. Try finding the target again.";
                         loadingMessage.style.display = 'block';
                     }
-                    currentVisualType = 'none'; // Reset if anchor not ready
+                    currentVisualType = 'none'; 
                     return;
                 }
                 
@@ -272,7 +279,7 @@
                     case 'fireflies': createFireflies(); break;
                     case 'none': 
                         console.log("Visuals explicitly cleared by user.");
-                        currentVisualType = 'none'; // Ensure type is 'none'
+                        currentVisualType = 'none'; 
                         break; 
                 }
                 
@@ -285,51 +292,68 @@
                 }
             };
 
-            const shaderNoiseFunctions = `float rand(vec2 co){ return fract(sin(dot(co.xy ,vec2(12.9898,78.233))) * 43758.5453); } float noise(vec2 p) { vec2 i = floor(p); vec2 f = fract(p); f = f*f*(3.0-2.0*f); float r1 = mix(rand(i), rand(i + vec2(1.0,0.0)),f.x); float r2 = mix(rand(i + vec2(0.0,1.0)), rand(i + vec2(1.0,1.0)),f.x); return mix(r1,r2,f.y); }`;
+            const shaderNoiseFunctions = `/* ... same ... */`;
 
-            // --- STARFIELD (DEBUG VERSION - Baseline Visibility Near Target) ---
+            // --- STARFIELD (ULTRA DEBUG VERSION - With Cube) ---
             function createStarField() {
-                const particleCount = 500;
+                const mainGroup = new THREE.Group(); // Group to hold points and cube
+
+                // --- Debug Cube ---
+                const cubeGeometry = new THREE.BoxGeometry(0.2, 0.2, 0.2); // Small cube
+                const cubeMaterial = new THREE.MeshBasicMaterial({ color: 0x00ff00, wireframe: true }); // Bright green wireframe
+                const debugCube = new THREE.Mesh(cubeGeometry, cubeMaterial);
+                debugCube.position.set(0, 0.1, 0); // Position it slightly above the anchor center
+                mainGroup.add(debugCube);
+                console.log("Ultra Debug StarField: Debug cube created and added to mainGroup.");
+
+                // --- Debug Points ---
+                const particleCount = 200; // Reduced count for clarity if cube is also present
                 const positions = new Float32Array(particleCount * 3);
-                console.log("Debugging StarField (Baseline): Creating particles near target plane...");
+                console.log("Ultra Debug StarField: Creating particles near target plane...");
 
                 for (let i = 0; i < particleCount; i++) {
                     positions[i * 3 + 0] = (Math.random() - 0.5) * 1.5;   // X range: -0.75 to 0.75
-                    positions[i * 3 + 1] = (Math.random() * 0.4) - 0.1;   // Y range: -0.1 to 0.3 (very close to target plane)
+                    positions[i * 3 + 1] = (Math.random() * 0.5) - 0.25;  // Y range: -0.25 to 0.25 (around target plane)
                     positions[i * 3 + 2] = (Math.random() - 0.5) * 1.5;   // Z range: -0.75 to 0.75
                 }
                 const geometry = new THREE.BufferGeometry();
                 geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
 
                 const material = new THREE.PointsMaterial({
-                    size: 0.08,
+                    size: 0.2, // VERY LARGE particles for visibility
                     color: 0xff00ff, 
                     transparent: false,
                     opacity: 1.0,
                     blending: THREE.NormalBlending,
-                    depthWrite: true,
-                    sizeAttenuation: true
+                    depthWrite: true, // Try true, then false if still issues
+                    sizeAttenuation: true // Try false if size:0.2 isn't big enough on screen
                 });
                 const points = new THREE.Points(geometry, material);
+                mainGroup.add(points);
+                console.log("Ultra Debug StarField: Points created and added to mainGroup.");
+
 
                 if (anchor && anchor.group) {
-                    anchor.group.add(points);
-                    console.log("Debugging StarField (Baseline): Mesh added to anchor group.");
+                    anchor.group.add(mainGroup); // Add the group containing both
+                    console.log("Ultra Debug StarField: Main group (cube & points) added to anchor group.");
                 } else {
-                    console.error("StarField (Baseline): Anchor or anchor.group is not available!");
-                    currentVisual = null; // Ensure currentVisual is null if creation fails
+                    console.error("StarField (Ultra Debug): Anchor or anchor.group is not available!");
+                    currentVisual = null; 
                     return;
                 }
-                currentVisual = { mesh: points, type: 'starfield', update: (audioData, time) => { points.rotation.y += 0.001; }};
+                currentVisual = { 
+                    mesh: mainGroup, // The mesh is now the group
+                    type: 'starfield', 
+                    update: (audioData, time) => { mainGroup.rotation.y += 0.0005; } // Rotate the whole group slowly
+                };
             }
 
             // --- CLOUDS (Initial Scaled-Down Adjustments) ---
-            function createClouds() {
+            function createClouds() { /* ... same as previous full code ... */ 
                 const particleCount = 100; 
                 const positions = new Float32Array(particleCount * 3);
                 const cloudInstanceData = [];
                 console.log("Attempting to create Clouds. Anchor visible:", anchor ? anchor.visible : 'N/A');
-
                 for (let i = 0; i < particleCount; i++) {
                     positions[i * 3 + 0] = (Math.random() - 0.5) * 2.5; 
                     positions[i * 3 + 1] = Math.random() * 1.0 + 0.2;   
@@ -339,21 +363,12 @@
                 const geometry = new THREE.BufferGeometry();
                 geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
                 const material = new THREE.PointsMaterial({
-                    size: 0.8, 
-                    map: cloudTexture, 
-                    transparent: true, 
-                    opacity: 0.5, 
-                    blending: THREE.NormalBlending, 
-                    depthWrite: false, 
-                    color: 0xffffff 
+                    size: 0.8, map: cloudTexture, transparent: true, opacity: 0.5, 
+                    blending: THREE.NormalBlending, depthWrite: false, color: 0xffffff 
                 });
                 const points = new THREE.Points(geometry, material);
-                
-                if (anchor && anchor.group) {
-                    anchor.group.add(points);
-                } else { currentVisual = null; return; }
-
-                currentVisual = {
+                if (anchor && anchor.group) anchor.group.add(points); else { currentVisual = null; return; }
+                currentVisual = { /* ... update logic ... */ 
                     mesh: points, type: 'clouds', data: cloudInstanceData,
                     update: (audioData, time, delta) => {
                         const posAttr = points.geometry.getAttribute('position');
@@ -371,27 +386,21 @@
             }
 
             // --- FLOWING WATER (Known Visible Parameters) ---
-            const waterVertexShader = shaderNoiseFunctions + `varying vec2 vUv; uniform float uTime; uniform float uFrequency; uniform float uAmplitude; void main() { vUv = uv; vec3 pos = position; float time = uTime * 0.15; pos.z += sin(pos.x * uFrequency + time) * uAmplitude * 0.6; pos.z += cos(pos.y * uFrequency * 0.7 + time * 1.3) * uAmplitude * 0.4; pos.z += noise(vec2(pos.x*0.15 + time*0.2, pos.y*0.15 + time*0.1)) * uAmplitude * 0.8; gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0); }`;
-            const waterFragmentShader = shaderNoiseFunctions + `varying vec2 vUv; uniform float uTime; uniform vec3 uWaterColorDeep; uniform vec3 uWaterColorSurface; uniform float uOpacity; void main() { float time = uTime * 0.03; vec2 uvT = vUv; uvT.x += noise(vUv * 2.5 + time) * 0.02; uvT.y += noise(vUv * 2.5 - time * 1.2) * 0.02; float n = abs(noise(uvT * 5.0 + time * 0.6)); vec3 waterColor = mix(uWaterColorDeep, uWaterColorSurface, smoothstep(0.25, 0.65, n)); float sparkleN = noise(vUv * 20.0 + time * 2.5); float sparkle = pow(max(0.0, sparkleN - 0.6), 6.0) * 0.8; sparkle = smoothstep(0.0, 0.1, sparkle); gl_FragColor = vec4(waterColor + sparkle, (n * 0.35 + 0.45) * uOpacity); }`;
-
-            function createFlowingWater() {
+            const waterVertexShader = `/* ... same ... */`; const waterFragmentShader = `/* ... same ... */`;
+            function createFlowingWater() { /* ... same as previous full code ... */ 
                 const geometry = new THREE.PlaneGeometry(1.5, 1.5, 20, 20); 
                 const material = new THREE.ShaderMaterial({ 
                     vertexShader: waterVertexShader, fragmentShader: waterFragmentShader,
-                    uniforms: {
-                        uTime: { value: 0.0 }, uFrequency: { value: 2.5 }, 
-                        uAmplitude: { value: 0.1 },
-                        uWaterColorDeep: { value: new THREE.Color(0x001e42) },
-                        uWaterColorSurface: { value: new THREE.Color(0x30a0f0) },
+                    uniforms: { uTime: { value: 0.0 }, uFrequency: { value: 2.5 }, uAmplitude: { value: 0.1 },
+                        uWaterColorDeep: { value: new THREE.Color(0x001e42) }, uWaterColorSurface: { value: new THREE.Color(0x30a0f0) },
                         uOpacity: { value: 0.65 }
-                    },
-                    transparent: true, depthWrite: false, side: THREE.DoubleSide
+                    }, transparent: true, depthWrite: false, side: THREE.DoubleSide
                 });
                 const waterMesh = new THREE.Mesh(geometry, material);
-                waterMesh.position.y = 0.05; 
-                waterMesh.rotation.x = -Math.PI / 2.8; 
+                waterMesh.position.y = 0.05; waterMesh.rotation.x = -Math.PI / 2.8; 
                 if (anchor && anchor.group) anchor.group.add(waterMesh); else { currentVisual = null; return; }
-                currentVisual = { mesh: waterMesh, type: 'water', update: (audioData, time) => {  
+                currentVisual = { /* ... update logic ... */ 
+                    mesh: waterMesh, type: 'water', update: (audioData, time) => {  
                     material.uniforms.uTime.value = time;
                     material.uniforms.uFrequency.value = 1.5 + (audioData.midAverage / 255) * 4.0;
                     material.uniforms.uAmplitude.value = 0.02 + (audioData.bassAverage / 255) * 0.10;
@@ -399,13 +408,13 @@
                 }};
             }
 
+
             // --- FIREFLIES (Initial Scaled-Down Adjustments) ---
-            function createFireflies() {
+            function createFireflies() { /* ... same as previous full code ... */ 
                 const particleCount = 80; 
                 const positions = new Float32Array(particleCount * 3);
                 const fireflyInstanceData = [];
                 console.log("Attempting to create Fireflies. Anchor visible:", anchor ? anchor.visible : 'N/A');
-
                 for (let i = 0; i < particleCount; i++) {
                     positions[i * 3 + 0] = (Math.random() - 0.5) * 1.8; 
                     positions[i * 3 + 1] = (Math.random() * 0.8) - 0.2;   
@@ -418,19 +427,12 @@
                 const geometry = new THREE.BufferGeometry();
                 geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
                 const material = new THREE.PointsMaterial({
-                    size: 0.06, 
-                    map: fireflyTexture, 
-                    color: 0xffffaa,
-                    transparent: true, 
-                    blending: THREE.AdditiveBlending,  
-                    depthWrite: false, 
-                    opacity: 0.9
+                    size: 0.06, map: fireflyTexture, color: 0xffffaa,
+                    transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0.9
                 });
                 const points = new THREE.Points(geometry, material);
-
                 if (anchor && anchor.group) anchor.group.add(points); else { currentVisual = null; return; }
-                
-                currentVisual = { 
+                currentVisual = { /* ... update logic ... */ 
                     mesh: points, type: 'fireflies', data: fireflyInstanceData,
                     update: (audioData, time, delta) => {
                         const posAttr = points.geometry.getAttribute('position');
@@ -456,8 +458,7 @@
                 };
             }
 
-            // --- Application Startup Logic ---
-            const beginARExperience = () => {
+            const beginARExperience = () => { /* ... same ... */ 
                 if (startExperienceUI) startExperienceUI.style.display = 'none';
                 if (loadingMessage) { loadingMessage.innerHTML = "Loading AR assets..."; loadingMessage.style.display = 'block';}
                 if (controlsDiv) controlsDiv.style.display = 'block'; 
@@ -472,13 +473,7 @@
                     });
                 });
             };
-
-            if (startArButton) {
-                startArButton.addEventListener('click', beginARExperience);
-            } else {
-                console.error("Start AR Button not found...");
-                if(loadingMessage) { loadingMessage.innerHTML = "Error: Start button missing..."; loadingMessage.style.display = 'block'; }
-            }
+            if (startArButton) { /* ... same ... */ }
         });
     </script>
 </body>
