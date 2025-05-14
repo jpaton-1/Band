@@ -3,14 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
-    <title>A Band After Midnight - AR Water Test</title>
+    <title>A Band After Midnight - AR Water Position Test</title>
     <style>
         body { margin: 0; font-family: sans-serif; overflow: hidden; background-color: #000; color: #fff; }
         #container { width: 100vw; height: 100vh; position: relative; overflow: hidden; }
         #controls {
             position: absolute; top: 10px; left: 10px; z-index: 100;
             background: rgba(0,0,0,0.6); padding: 8px; border-radius: 8px;
-            /* display: none; Re-enable controls */
         }
         #controls button {
             display: block;
@@ -76,7 +75,7 @@
     <div id="controls">
         <button id="btn-starfield" onclick="setActiveVisual('starfield')">Star Field (Placeholder)</button>
         <button id="btn-clouds" onclick="setActiveVisual('clouds')">Clouds (Placeholder)</button>
-        <button id="btn-water" onclick="setActiveVisual('water')">Flowing Water (Test)</button>
+        <button id="btn-water" onclick="setActiveVisual('water')">Flowing Water (Test Y Pos)</button>
         <button id="btn-fireflies" onclick="setActiveVisual('fireflies')">Fireflies (Placeholder)</button>
         <button id="btn-none" onclick="setActiveVisual('none')">Clear Visuals</button>
     </div>
@@ -90,7 +89,7 @@
             console.log("DOM Content Loaded. Setting up listeners.");
             const container = document.querySelector("#container");
             const loadingMessage = document.getElementById('loadingMessage');
-            const controlsDiv = document.getElementById('controls'); // For showing it later
+            const controlsDiv = document.getElementById('controls');
             const startExperienceUI = document.getElementById('startExperienceUI');
             const startArButton = document.getElementById('startArButton');
 
@@ -102,9 +101,9 @@
 
             let analyser;
             let dataArray;
-            const audioSummary = { /* ... */ }; // Re-add full audioSummary if needed by water for reactivity
+            const audioSummary = { /* ... same ... */ };
 
-            async function startAudio() { 
+            async function startAudio() { /* ... same robust version ... */ 
                 if (audioSummary.audioContextActive) return;
                 if(loadingMessage) loadingMessage.innerHTML = "Requesting microphone access...";
                 try {
@@ -125,8 +124,8 @@
                     if(loadingMessage) loadingMessage.innerHTML = "Microphone access denied/error. Audio reactivity disabled.<br><small>" + err.message + "</small>";
                 }
             }
-            function updateAudioSummary() {
-                 if (!analyser || !dataArray || !audioSummary.dataArrayValid) {
+            function updateAudioSummary() { /* ... same robust version ... */
+                if (!analyser || !dataArray || !audioSummary.dataArrayValid) {
                     audioSummary.overallAverage = 10; audioSummary.bassAverage = 10;
                     audioSummary.midAverage = 10; audioSummary.trebleAverage = 10; return audioSummary;
                 }
@@ -137,8 +136,7 @@
                 audioSummary.midAverage=(mc-bc)>0?M/(mc-bc):0; audioSummary.trebleAverage=(l-mc)>0?T/(l-mc):0;
                 return audioSummary;
             }
-
-            // Placeholder textures will be loaded by loadAllAssets
+            
             let starTexture, cloudTexture, fireflyTexture; 
 
             function loadAllAssets(callback) {
@@ -177,23 +175,20 @@
                     if(loadingMessage) loadingMessage.innerHTML = "Error: Failed to create AR anchor.";
                     return;
                 }
-                // renderer.outputEncoding = THREE.sRGBEncoding; // Good for r151 if colors look off
+                // renderer.outputEncoding = THREE.sRGBEncoding; 
 
                 anchor.onTargetFound = () => {
                     console.log("EVENT: Target Found!");
                     if(loadingMessage) loadingMessage.style.display = 'none';
                     if (!currentVisual && currentVisualType === 'none') { 
-                        console.log("No current visual, setting 'water' as default on target found.");
-                        setActiveVisual('water'); // Default to water for this test
+                        console.log("No current visual, setting 'water' as default on target found (Y Position Test).");
+                        setActiveVisual('water'); 
                     } else {
                         console.log("Target found, but a visual ("+ currentVisualType +") is already active or set.");
                     }
                 };
                 anchor.onTargetLost = () => {
                     console.log("EVENT: Target Lost.");
-                    // Optional: clear visuals or hide them
-                    // clearVisuals();
-                    // currentVisualType = 'none';
                 };
 
                 try {
@@ -201,10 +196,10 @@
                     await mindarThree.start(); 
                     console.log("mindarThree.start() successful. Renderer animation loop starting.");
                     if(loadingMessage) loadingMessage.innerHTML = "Scanning for target...";
-                    if(controlsDiv) controlsDiv.style.display = 'block'; // Show controls now
+                    if(controlsDiv) controlsDiv.style.display = 'block';
 
                     renderer.setAnimationLoop(() => {
-                        if (!renderer || !scene || !camera) { return; } // Basic guard
+                        if (!renderer || !scene || !camera) { return; } 
                         const delta = clock.getDelta();
                         const elapsedTime = clock.getElapsedTime();
                         const currentAudioData = updateAudioSummary();
@@ -223,10 +218,7 @@
                 console.log("clearVisuals called. Current visual:", currentVisual ? currentVisual.type : "null");
                 if (anchor && currentVisual && currentVisual.mesh) {
                     anchor.group.remove(currentVisual.mesh);
-                    console.log("Removed mesh from anchor.group:", currentVisual.mesh);
-                    if (currentVisual.mesh.geometry) {
-                        currentVisual.mesh.geometry.dispose();
-                    }
+                    if (currentVisual.mesh.geometry) currentVisual.mesh.geometry.dispose();
                     if (currentVisual.mesh.material) {
                         if (Array.isArray(currentVisual.mesh.material)) {
                             currentVisual.mesh.material.forEach(m => m.dispose());
@@ -235,18 +227,17 @@
                         }
                     }
                      console.log("Disposed geo/mat for", currentVisual.type);
-                } else {
-                    // console.log("clearVisuals: No current visual or mesh to clear, or anchor not ready.");
                 }
-                currentVisual = null; // Always nullify
+                currentVisual = null; 
             }
             
             window.setActiveVisual = (type) => {
                 console.log(`setActiveVisual called for type: "${type}". Current type: "${currentVisualType}", Current visual exists: ${!!currentVisual}`);
                 
                 if (currentVisualType === type && type !== 'none' && currentVisual) {
-                     console.log(`Visual type "${type}" is already active. No change.`);
-                     return; 
+                     console.log(`Visual type "${type}" is already active. Re-creating to test position changes for 'water'.`);
+                     // Allow re-creation if it's water, to see position changes immediately
+                     if (type !== 'water' && type !== 'none') return; // For other types, if active, do nothing.
                 } else if (currentVisualType === 'none' && type === 'none' && !currentVisual) {
                     console.log("Already cleared, type 'none' requested. Doing nothing.");
                     return;
@@ -290,19 +281,19 @@
 
             // --- PLACEHOLDER VISUALS (Except Water) ---
             function createStarField() {
-                console.log("createStarField (Placeholder) called. No visual created.");
-                currentVisual = null; // Explicitly ensure no visual is set
+                console.log("createStarField (Placeholder) called. No visual created for this test.");
+                currentVisual = null; 
             }
             function createClouds() {
-                console.log("createClouds (Placeholder) called. No visual created.");
+                console.log("createClouds (Placeholder) called. No visual created for this test.");
                 currentVisual = null;
             }
             function createFireflies() {
-                console.log("createFireflies (Placeholder) called. No visual created.");
+                console.log("createFireflies (Placeholder) called. No visual created for this test.");
                 currentVisual = null;
             }
 
-            // --- FLOWING WATER (This should be the visible one) ---
+            // --- FLOWING WATER (Adjust Y Position Here) ---
             const waterVertexShader = shaderNoiseFunctions + `varying vec2 vUv; uniform float uTime; uniform float uFrequency; uniform float uAmplitude; void main() { vUv = uv; vec3 pos = position; float time = uTime * 0.15; pos.z += sin(pos.x * uFrequency + time) * uAmplitude * 0.6; pos.z += cos(pos.y * uFrequency * 0.7 + time * 1.3) * uAmplitude * 0.4; pos.z += noise(vec2(pos.x*0.15 + time*0.2, pos.y*0.15 + time*0.1)) * uAmplitude * 0.8; gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0); }`;
             const waterFragmentShader = shaderNoiseFunctions + `varying vec2 vUv; uniform float uTime; uniform vec3 uWaterColorDeep; uniform vec3 uWaterColorSurface; uniform float uOpacity; void main() { float time = uTime * 0.03; vec2 uvT = vUv; uvT.x += noise(vUv * 2.5 + time) * 0.02; uvT.y += noise(vUv * 2.5 - time * 1.2) * 0.02; float n = abs(noise(uvT * 5.0 + time * 0.6)); vec3 waterColor = mix(uWaterColorDeep, uWaterColorSurface, smoothstep(0.25, 0.65, n)); float sparkleN = noise(vUv * 20.0 + time * 2.5); float sparkle = pow(max(0.0, sparkleN - 0.6), 6.0) * 0.8; sparkle = smoothstep(0.0, 0.1, sparkle); gl_FragColor = vec4(waterColor + sparkle, (n * 0.35 + 0.45) * uOpacity); }`;
             
@@ -321,7 +312,12 @@
                     transparent: true, depthWrite: false, side: THREE.DoubleSide
                 });
                 const waterMesh = new THREE.Mesh(geometry, material);
-                waterMesh.position.y = 0.05; 
+                
+                // === Y POSITION TO TEST ===
+                waterMesh.position.y = 0.5; // Test 1: 0.25, Test 2: 0.5, Test 3: 0.75, Test 4: 1.0
+                // ==========================
+
+                console.log("FlowingWater mesh Y position set to:", waterMesh.position.y);
                 waterMesh.rotation.x = -Math.PI / 2.8; 
 
                 if (anchor && anchor.group) {
@@ -329,15 +325,14 @@
                     console.log("FlowingWater mesh ADDED to anchor.group");
                 } else { 
                     console.error("FlowingWater: Anchor not ready! Cannot add mesh."); 
-                    currentVisual = null; // Ensure currentVisual is null if creation fails
-                    return; 
+                    currentVisual = null; return; 
                 }
                 currentVisual = { 
                     mesh: waterMesh, type: 'water', 
                     update: (audioData, time) => {  
                         material.uniforms.uTime.value = time;
                         material.uniforms.uFrequency.value = 1.5 + (audioData.midAverage / 255) * 4.0;
-                        material.uniforms.uAmplitude.value = 0.02 + (audioData.bassAverage / 255) * 0.10; // Using reduced amplitude that worked
+                        material.uniforms.uAmplitude.value = 0.02 + (audioData.bassAverage / 255) * 0.10; 
                         material.uniforms.uOpacity.value = 0.4 + (audioData.overallAverage / 255) * 0.45;
                     }
                 };
@@ -347,9 +342,9 @@
                 console.log("UI: 'Start AR Experience' button clicked.");
                 if (startExperienceUI) startExperienceUI.style.display = 'none';
                 if (loadingMessage) { loadingMessage.innerHTML = "Loading AR assets..."; loadingMessage.style.display = 'block';}
-                if (controlsDiv) controlsDiv.style.display = 'block'; // Show controls here
+                if (controlsDiv) controlsDiv.style.display = 'none'; // Keep controls hidden until AR starts
                 
-                loadAllAssets(() => { // loadAllAssets is back
+                loadAllAssets(() => { 
                     if (typeof THREE === 'undefined' || typeof MindARThree === 'undefined') {
                         if(loadingMessage) loadingMessage.innerHTML = "Error: Critical libraries (THREE or MindAR) not loaded...";
                         console.error("THREE or MindARThree (module) not loaded."); return;
