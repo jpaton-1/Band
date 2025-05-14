@@ -53,8 +53,8 @@
     <script type="importmap">
     {
       "imports": {
-        "three": "https://cdnjs.cloudflare.com/ajax/libs/three.js/0.164.1/three.module.min.js",
-        "three/addons/": "https://unpkg.com/three@0.164.1/examples/jsm/",
+        "three": "https://cdnjs.cloudflare.com/ajax/libs/three.js/0.151.0/three.module.min.js",
+        "three/addons/": "https://unpkg.com/three@0.151.0/examples/jsm/",
         "mindar-image-three": "https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-three.prod.js"
       }
     }
@@ -195,6 +195,16 @@
                     uiLoading: "no", uiScanning: "no", uiError: "yes"
                 });
                 const { renderer, scene, camera } = mindarThree;
+                
+                // With older Three.js (like r151), you might need to set outputEncoding on the renderer
+                // if MindAR doesn't handle it for this version combination.
+                // Modern Three.js uses outputColorSpace.
+                // Check if MindAR 1.2.5 sets this; if colors look off, you might need:
+                // renderer.outputEncoding = THREE.sRGBEncoding; // (if THREE.sRGBEncoding is available)
+                                                            // or the appropriate ColorSpace for newer
+                                                            // three.js if you were on a newer version of mindar.
+                                                            // For r151, sRGBEncoding should be fine if needed.
+
                 anchor = mindarThree.addAnchor(0);
 
                 anchor.onTargetFound = () => {
