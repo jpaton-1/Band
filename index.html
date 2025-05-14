@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
-    <title>A Band After Midnight - AR Experience</title>
+    <title>A Band After Midnight</title>
     <style>
         body { margin: 0; font-family: sans-serif; overflow: hidden; background-color: #000; color: #fff; }
         #container { width: 100vw; height: 100vh; position: relative; overflow: hidden; }
@@ -62,17 +62,16 @@
 </head>
 <body>
     <div id="startExperienceUI">
-        <h2>Welcome to the AR Visualizer!</h2>
+        <h2>We can't see or hear...</h2>
         <p>
-            This experience uses your device's camera for Augmented Reality
-            and your microphone to make the visuals react to sound.
+            We need access to your device's camera and microphone.
             <br><br>
-            Please click "Start" and then <strong>allow camera and microphone access</strong> when your browser asks.
+            Click "Start" and then <strong>allow camera and microphone access</strong> when your browser asks.
         </p>
-        <button id="startArButton">Start AR Experience</button>
+        <button id="startArButton">Start</button>
     </div>
 
-    <div id="loadingMessage">Loading AR Experience...</div>
+    <div id="loadingMessage">Loading...</div>
     <div id="controls">
         <button id="btn-starfield" onclick="setActiveVisual('starfield')">Star Field</button>
         <button id="btn-clouds" onclick="setActiveVisual('clouds')">Clouds</button>
@@ -295,36 +294,47 @@
                 }
             `;
 
-            function createStarField() {
-                const particleCount = 2000;
-                const positions = new Float32Array(particleCount * 3);
-                const colors = new Float32Array(particleCount * 3);
-                for (let i = 0; i < particleCount; i++) {
-                    positions[i * 3 + 0] = (Math.random() - 0.5) * 30;
-                    positions[i * 3 + 1] = Math.random() * 15 + 5;
-                    positions[i * 3 + 2] = (Math.random() - 0.5) * 30 - 8;
-                    const color = new THREE.Color();
-                    color.setHSL(Math.random() * 0.1 + 0.58, 0.9, Math.random() * 0.35 + 0.6);
-                    colors[i * 3 + 0] = color.r; colors[i * 3 + 1] = color.g; colors[i * 3 + 2] = color.b;
-                }
-                const geometry = new THREE.BufferGeometry();
-                geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-                geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-                const material = new THREE.PointsMaterial({
-                    size: 0.07, map: starTexture, vertexColors: true,
-                    transparent: true, blending: THREE.AdditiveBlending,
-                    sizeAttenuation: true, depthWrite: false, opacity: 0.85
-                });
-                const points = new THREE.Points(geometry, material);
-                anchor.group.add(points);
-                currentVisual = {
-                    mesh: points, type: 'starfield',
-                    update: (audioData, time) => {
-                        points.material.opacity = 0.6 + (audioData.trebleAverage / 255) * 0.4;
-                        points.rotation.y += 0.0003;
-                    }
-                };
-            }
+function createStarField() {
+    const particleCount = 2000; // Keep particle count for now, or reduce for testing
+    const positions = new Float32Array(particleCount * 3);
+    const colors = new Float32Array(particleCount * 3);
+    for (let i = 0; i < particleCount; i++) {
+        // Original:
+        // positions[i * 3 + 0] = (Math.random() - 0.5) * 30;
+        // positions[i * 3 + 1] = Math.random() * 15 + 5;
+        // positions[i * 3 + 2] = (Math.random() - 0.5) * 30 - 8;
+
+        // Adjusted for better visibility (closer to a 1x1 target):
+        positions[i * 3 + 0] = (Math.random() - 0.5) * 2;   // X range: -1 to 1
+        positions[i * 3 + 1] = (Math.random() - 0.5) * 2;   // Y range: -1 to 1 (centered on target plane)
+        positions[i * 3 + 2] = (Math.random() - 0.5) * 1;   // Z range: -0.5 to 0.5 (closer to target plane)
+
+        const color = new THREE.Color();
+        color.setHSL(Math.random() * 0.1 + 0.58, 0.9, Math.random() * 0.35 + 0.6);
+        colors[i * 3 + 0] = color.r; colors[i * 3 + 1] = color.g; colors[i * 3 + 2] = color.b;
+    }
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    const material = new THREE.PointsMaterial({
+        // Original size: size: 0.07,
+        size: 0.03, // Adjust particle size if overall scene scale is smaller
+        map: starTexture, vertexColors: true,
+        transparent: true, blending: THREE.AdditiveBlending,
+        sizeAttenuation: true, depthWrite: false, opacity: 0.85
+    });
+    const points = new THREE.Points(geometry, material);
+    anchor.group.add(points);
+    currentVisual = {
+        mesh: points, type: 'starfield',
+        update: (audioData, time) => {
+            points.material.opacity = 0.6 + (audioData.trebleAverage / 255) * 0.4;
+            // Slower rotation if preferred, or make it dependent on the new scale
+            points.rotation.y += 0.0003; // Keep for now, adjust if too fast/slow
+        }
+    };
+}
+
 
             function createClouds() {
                 const particleCount = 120;
