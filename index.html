@@ -38,16 +38,10 @@
             border-radius: 8px; font-weight: bold;
         }
     </style>
-<script type="importmap">
-{
-  "imports": {
-    "three": "https://cdnjs.cloudflare.com/ajax/libs/three.js/0.151.0/three.module.min.js",
-    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.151.0/examples/jsm/",
-    "three/addons/controls/DeviceOrientationControls.js": "https://cdn.jsdelivr.net/npm/three@0.151.0/examples/jsm/controls/DeviceOrientationControls.js"
-  }
-}
-</script>
-</head>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/0.151.0/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.151.0/examples/js/controls/DeviceOrientationControls.js"></script>
+    </head>
 <body>
     <div id="startExperienceUI">
         <h2>Gyro Shader Experience</h2>
@@ -70,8 +64,11 @@
     <div id="container"></div>
 
     <script type="module">
-        import * as THREE from 'three';
-        import { DeviceOrientationControls } from 'three/addons/controls/DeviceOrientationControls.js';
+        // MODIFICATION: Removed import statements for THREE and DeviceOrientationControls
+        // import * as THREE from 'three';
+        // import { DeviceOrientationControls } from 'three/addons/controls/DeviceOrientationControls.js';
+
+        // THREE and THREE.DeviceOrientationControls will be available globally from the script tags in <head>
 
         let scene, camera, renderer, clock, deviceControls;
         let videoTexture, videoElement;
@@ -136,18 +133,18 @@
                     videoElement.style.display = 'block';
                     console.log("initVideoStream: Camera stream acquired and playing.");
                     
-                    videoTexture = new THREE.VideoTexture(videoElement);
-                    videoTexture.minFilter = THREE.LinearFilter;
-                    videoTexture.magFilter = THREE.LinearFilter;
+                    videoTexture = new THREE.VideoTexture(videoElement); // THREE will be global
+                    videoTexture.minFilter = THREE.LinearFilter;         // THREE will be global
+                    videoTexture.magFilter = THREE.LinearFilter;         // THREE will be global
                     if (scene) scene.background = videoTexture;
 
                 } catch (err) {
                     console.error("Error accessing camera:", err);
-                    if (scene) scene.background = new THREE.Color(0x100015); 
+                    if (scene) scene.background = new THREE.Color(0x100015); // THREE will be global
                 }
             } else {
                 console.error("getUserMedia not supported!");
-                if (scene) scene.background = new THREE.Color(0x100015);
+                if (scene) scene.background = new THREE.Color(0x100015); // THREE will be global
             }
         }
 
@@ -172,7 +169,7 @@
                         vec2 u = .2*( (vUv * 2.0 - 1.0) * u_resolution )/u_resolution.y;
                         vec4 z_shadertoy, o_shadertoy;
                         o_shadertoy = vec4(1.0,2.0,3.0,0.0); 
-                        z_shadertoy = o_shadertoy;          
+                        z_shadertoy = o_shadertoy;       
                         vec2 v_shadertoy = u_resolution.xy;
                         float t = u_time + u_bass * 5.0 + u_overall_avg * 2.0; 
 
@@ -185,7 +182,7 @@
                             v_shadertoy = cos(++t - 7.*u*pow(a += .03 + u_mid*0.01, i)) - 5.*u, 
                             u += tanh(40. * dot(u *= mat2(cos(i + .02*t - vec4(0,11,33,0))) 
                                                     ,u) 
-                                        * cos(1e2*u.yx + t + u_treble*3.0)) / 2e2
+                                            * cos(1e2*u.yx + t + u_treble*3.0)) / 2e2
                             + .2 * a * u
                             + cos(4./exp(dot(o_shadertoy,o_shadertoy)/1e2) + t) / 3e2;
                             
@@ -194,10 +191,10 @@
                         gl_FragColor = vec4(o_shadertoy.rgb, 1.0);
                     }
                 `,
-                initUniforms: function() { // Changed to standard function
+                initUniforms: function() {
                     return {
                         u_time: { value: 0.0 },
-                        u_resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
+                        u_resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) }, // THREE will be global
                         u_bass: { value: 0.0 }, u_mid: { value: 0.0 }, u_treble: { value: 0.0 }, u_overall_avg: { value: 0.0 }
                     };
                 }
@@ -212,16 +209,12 @@
 
                     void main() {
                         vec2 R = u_resolution.xy;
-                        // vec2 U = vUv * R; // Not used directly, U is derived later in this shader
-
                         vec4 O_accum = vec4(0.0); 
-                        float i_loop = 0.0, d_step = 0.01, z_depth = 0.0, r_reflect = 0.0; // Initialize d_step and r_reflect
-                        
+                        float i_loop = 0.0, d_step = 0.01, z_depth = 0.0, r_reflect = 0.0;
                         float time_adjusted = u_time + u_overall_avg * 3.0;
 
                         for(; i_loop++<90.0; 
-                           
-                            O_accum += (cos(z_depth*.5 + time_adjusted + u_bass * 2.0 + vec4(0,2,4,3)) + 1.3 ) / max(0.001, d_step) / max(0.001, z_depth) // Avoid division by zero
+                            O_accum += (cos(z_depth*.5 + time_adjusted + u_bass * 2.0 + vec4(0,2,4,3)) + 1.3 ) / max(0.001, d_step) / max(0.001, z_depth)
                         ) {
                             vec2 uv_norm = vUv * 2.0 - 1.0; 
                             uv_norm.x *= R.x / R.y; 
@@ -229,23 +222,20 @@
                             vec3 p = z_depth * rayDir;
                             
                             vec3 p_temp_for_r = p;
-                            // The original reflection logic is very specific and might need more context.
-                            // This is a simplified interpretation.
-                            p_temp_for_r.y = p.y + 1.0; // Simulate -++p.y behavior for reflection check assuming p.y starts negative
+                            p_temp_for_r.y = p.y + 1.0; 
                             r_reflect = max(-p_temp_for_r.y, 0.0); 
-
-                            p.y += r_reflect + r_reflect; // Mirror based on r_reflect
+                            p.y += r_reflect + r_reflect; 
                             
-                            float d_inner_loop = 1.0; // Temporary for inner loop d
+                            float d_inner_loop = 1.0; 
                             for(; d_inner_loop<30.0; d_inner_loop+=d_inner_loop)
                                 p.y += cos(p*d_inner_loop + 2.*time_adjusted*cos(d_inner_loop + u_mid * 2.0)+z_depth).x/d_inner_loop;
                             
                             float dist_to_plane = p.z + 3.0 + u_treble * 2.0; 
                             float scene_dist_term = abs(p.y-1.0);
-                            if (r_reflect > -1.0) { // Avoid division by zero if r_reflect was -1 then incremented
+                            if (r_reflect > -1.0) { 
                                 scene_dist_term /= ( (r_reflect + 1.0)*(r_reflect + 1.0) ); 
                             } else {
-                                scene_dist_term = 1e5; // Effectively infinite if denominator would be zero
+                                scene_dist_term = 1e5; 
                             }
                             
                             d_step = (0.1 * r_reflect + scene_dist_term + max(dist_to_plane, -dist_to_plane*0.1) ) / 8.0;
@@ -256,36 +246,43 @@
                         gl_FragColor = vec4(O_accum.rgb, 1.0);
                     }
                 `,
-                initUniforms: function() { // Changed to standard function
+                initUniforms: function() {
                     return {
                         u_time: { value: 0.0 },
-                        u_resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
+                        u_resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) }, // THREE will be global
                         u_bass: { value: 0.0 }, u_mid: { value: 0.0 }, u_treble: { value: 0.0 }, u_overall_avg: { value: 0.0 }
                     };
                 }
             }
-        }; // End of shaderVisuals object
+        }; 
         
         function initThreeJS() {
             console.log("initThreeJS: Initializing Scene, Camera, Renderer...");
-            scene = new THREE.Scene();
-            clock = new THREE.Clock();
-            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            scene = new THREE.Scene(); // THREE will be global
+            clock = new THREE.Clock(); // THREE will be global
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000); // THREE will be global
             camera.position.set(0,0,0.1); 
 
-            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer = new THREE.WebGLRenderer({ antialias: true }); // THREE will be global
             renderer.setSize(window.innerWidth, window.innerHeight);
             document.getElementById('container').appendChild(renderer.domElement);
 
-            deviceControls = new DeviceOrientationControls(camera);
-            console.log("initThreeJS: DeviceOrientationControls initialized.");
+            // MODIFICATION: Use global THREE.DeviceOrientationControls
+            if (typeof THREE.DeviceOrientationControls === 'function') {
+                deviceControls = new THREE.DeviceOrientationControls(camera);
+                console.log("initThreeJS: DeviceOrientationControls initialized.");
+            } else {
+                console.error("THREE.DeviceOrientationControls is not available. Check script loading order and CDN access.");
+                if(loadingMessage) loadingMessage.innerHTML += "<br><small>Motion controls failed to load.</small>";
+            }
 
-            const planeGeometry = new THREE.PlaneGeometry(20, 20 * (window.innerHeight/window.innerWidth)); 
-            currentShaderMaterial = new THREE.ShaderMaterial({
+
+            const planeGeometry = new THREE.PlaneGeometry(20, 20 * (window.innerHeight/window.innerWidth)); // THREE will be global
+            currentShaderMaterial = new THREE.ShaderMaterial({ // THREE will be global
                 vertexShader: commonVertexShader,
-                side: THREE.DoubleSide 
+                side: THREE.DoubleSide // THREE will be global
             });
-            shaderPlane = new THREE.Mesh(planeGeometry, currentShaderMaterial);
+            shaderPlane = new THREE.Mesh(planeGeometry, currentShaderMaterial); // THREE will be global
             shaderPlane.position.set(0, 0, -5); 
             scene.add(shaderPlane);
             shaderPlane.visible = false; 
@@ -303,9 +300,8 @@
             }
             if (shaderPlane) {
                 const aspect = window.innerWidth / window.innerHeight;
-                // Ensure geometry exists before disposing and re-creating
                 if (shaderPlane.geometry) shaderPlane.geometry.dispose(); 
-                shaderPlane.geometry = new THREE.PlaneGeometry(20, 20 / aspect, 1, 1); // Added segments
+                shaderPlane.geometry = new THREE.PlaneGeometry(20, 20 / aspect, 1, 1); // THREE will be global
             }
         }
 
@@ -346,8 +342,6 @@
                 return;
             }
 
-            // Avoid redundant work if already active, but allow re-init if needed (e.g. for debug)
-            // For now, if type is the same and plane is visible, assume it's fine.
             if (currentVisualType === type && shaderPlane && shaderPlane.visible) {
                 console.log("Visual already active:", type);
                 return; 
@@ -355,13 +349,13 @@
             
             currentShaderMaterial.vertexShader = commonVertexShader; 
             currentShaderMaterial.fragmentShader = visualConfig.fragmentShader;
-            currentShaderMaterial.uniforms = THREE.UniformsUtils.clone(visualConfig.initUniforms()); 
+            currentShaderMaterial.uniforms = THREE.UniformsUtils.clone(visualConfig.initUniforms()); // THREE will be global
             currentShaderMaterial.uniforms.u_resolution.value.set(window.innerWidth, window.innerHeight); 
             currentShaderMaterial.needsUpdate = true; 
             
             if (shaderPlane) {
-                 shaderPlane.material = currentShaderMaterial; // Ensure the plane uses the updated material instance
-                 shaderPlane.visible = true;
+                shaderPlane.material = currentShaderMaterial; 
+                shaderPlane.visible = true;
             }
             currentVisualType = type;
 
@@ -387,7 +381,7 @@
                     }
                 } catch (error) {
                     console.error("Error requesting Device Orientation permission:", error);
-                     if(loadingMessage) loadingMessage.innerHTML += "<br><small>Error with Orientation permissions.</small>";
+                        if(loadingMessage) loadingMessage.innerHTML += "<br><small>Error with Orientation permissions.</small>";
                 }
             } else {
                 orientationPermissionGranted = true; 
