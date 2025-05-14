@@ -50,9 +50,16 @@
         #startArButton:hover { background-color: #0056b3; }
     </style>
 
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/0.164.1/three.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-three.prod.js"></script>
-</head>
+    <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdnjs.cloudflare.com/ajax/libs/three.js/0.164.1/three.module.min.js",
+        "mindar-image-three": "https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-three.prod.js"
+      }
+    }
+    </script>
+
+    </head>
 <body>
     <div id="startExperienceUI">
         <h2>Welcome to the AR Visualizer!</h2>
@@ -75,20 +82,23 @@
     </div>
     <div id="container"></div>
 
-    <script>
+    <script type="module"> // <-- CRITICAL: Changed to type="module"
+        import * as THREE from 'three'; // <-- CRITICAL: Import THREE
+        import { MindARThree } from 'mindar-image-three'; // <-- CRITICAL: Import MindARThree
+
         document.addEventListener('DOMContentLoaded', () => {
             const container = document.querySelector("#container");
             const loadingMessage = document.getElementById('loadingMessage');
             const controlsDiv = document.getElementById('controls');
-            const controlButtons = document.querySelectorAll('#controls button');
+            const controlButtons = document.querySelectorAll('#controls button'); // Keep this if setActiveVisual is global
             const startExperienceUI = document.getElementById('startExperienceUI');
             const startArButton = document.getElementById('startArButton');
 
-            let mindarThree;
+            let mindarThree; // This will be an instance of MindARThree
             let anchor;
             let currentVisual = null;
             let currentVisualType = 'none';
-            const clock = new THREE.Clock();
+            const clock = new THREE.Clock(); // THREE is now available via import
 
             let analyser;
             let dataArray;
@@ -116,7 +126,6 @@
                 } catch (err) {
                     console.error("Error accessing microphone:", err);
                     if(loadingMessage) loadingMessage.innerHTML = "Microphone access denied/error. Audio reactivity disabled.<br><small>" + err.message + "</small>";
-                    // Proceed without audio if denied/error, visuals will still work but not react as much.
                 }
             }
 
@@ -146,7 +155,7 @@
                 return audioSummary;
             }
 
-            const textureLoader = new THREE.TextureLoader();
+            const textureLoader = new THREE.TextureLoader(); // THREE is available
             let starTexture, cloudTexture, fireflyTexture;
 
             function loadAllAssets(callback) {
@@ -162,7 +171,7 @@
                         ctx.fillStyle = gradient;
                     } else { ctx.fillStyle = color; }
                     ctx.fillRect(0,0,size,size);
-                    return new THREE.CanvasTexture(canvas);
+                    return new THREE.CanvasTexture(canvas); // THREE is available
                 };
 
                 starTexture = createPlaceholderTexture('rgba(230,230,255,0.9)', 32);
@@ -175,11 +184,12 @@
             const initMindAR = async () => {
                 if(loadingMessage) loadingMessage.innerHTML = "Initializing AR...<br>Please allow camera access and point at the target image.";
                 
-                await startAudio(); // Request microphone access first or concurrently
+                await startAudio();
 
-                mindarThree = new MINDAR.IMAGE.MindARThree({
+                // Use the imported MindARThree
+                mindarThree = new MindARThree({ // MINDAR.IMAGE.MindARThree becomes just MindARThree
                     container: container,
-                    imageTargetSrc: "./targets.mind", // Ensure this file exists!
+                    imageTargetSrc: "./targets.mind",
                     maxTrack: 1,
                     uiLoading: "no", uiScanning: "no", uiError: "yes"
                 });
@@ -188,25 +198,20 @@
 
                 anchor.onTargetFound = () => {
                     console.log("Target Found!");
-                    if(loadingMessage) loadingMessage.style.display = 'none'; // Hide loading message fully
+                    if(loadingMessage) loadingMessage.style.display = 'none';
                     if (currentVisualType === 'none' && !currentVisual) {
                         setActiveVisual('starfield');
                     }
                 };
                 anchor.onTargetLost = () => {
                     console.log("Target Lost.");
-                    // Optionally, show a "target lost" message, but not the main loading one
-                    // if(loadingMessage) {
-                    //     loadingMessage.innerHTML = "Target lost. Please find the image marker.";
-                    //     loadingMessage.style.display = 'block';
-                    // }
                 };
 
                 try {
-                    await mindarThree.start(); // This will trigger camera permission prompt
+                    await mindarThree.start();
                     renderer.setAnimationLoop(() => {
                         const delta = clock.getDelta();
-                        const elapsedTime = clock.elapsedTime;
+                        const elapsedTime = clock.getElapsedTime();
                         const currentAudioData = updateAudioSummary();
 
                         if (anchor.visible && currentVisual && currentVisual.update) {
@@ -217,12 +222,11 @@
                 } catch (e) {
                     console.error("Error starting MindAR:", e);
                     if(loadingMessage) loadingMessage.innerHTML = "Error starting AR. Check console, permissions, and target file.<br><small>" + e.message + "</small>";
-                     // Keep loading message visible with the error
                 }
             };
 
             function clearVisuals() {
-                if (currentVisual && currentVisual.mesh) {
+                if (anchor && currentVisual && currentVisual.mesh) { // Check anchor exists
                     anchor.group.remove(currentVisual.mesh);
                     if (currentVisual.mesh.geometry) currentVisual.mesh.geometry.dispose();
                     if (currentVisual.mesh.material) {
@@ -239,17 +243,29 @@
                 }
                 currentVisual = null;
             }
-
+            
+            // For setActiveVisual to be globally accessible from HTML onclick,
+            // it needs to be explicitly attached to the window object when using modules.
             window.setActiveVisual = (type) => {
                 if (currentVisualType === type && type !== 'none' && currentVisual) return;
 
                 clearVisuals();
                 currentVisualType = type;
 
-                controlButtons.forEach(btn => btn.classList.remove('active'));
+                document.querySelectorAll('#controls button').forEach(btn => btn.classList.remove('active'));
                 const activeBtn = document.getElementById(`btn-${type}`);
                 if (activeBtn) activeBtn.classList.add('active');
 
+                // Make sure anchor is initialized before trying to use anchor.group
+                if (!anchor && type !== 'none') {
+                    console.warn("AR anchor not ready, cannot create visual: " + type);
+                    if(loadingMessage && loadingMessage.style.display === 'none') {
+                        loadingMessage.innerHTML = "AR not fully loaded. Try finding the target again.";
+                        loadingMessage.style.display = 'block';
+                    }
+                    return;
+                }
+                
                 switch (type) {
                     case 'starfield': createStarField(); break;
                     case 'clouds': createClouds(); break;
@@ -259,6 +275,7 @@
                 }
                 if (currentVisual) console.log("Set active visual:", currentVisual.type);
             };
+
 
             const shaderNoiseFunctions = `
                 float rand(vec2 co){ return fract(sin(dot(co.xy ,vec2(12.9898,78.233))) * 43758.5453); }
@@ -279,19 +296,19 @@
                     positions[i * 3 + 0] = (Math.random() - 0.5) * 30;
                     positions[i * 3 + 1] = Math.random() * 15 + 5;
                     positions[i * 3 + 2] = (Math.random() - 0.5) * 30 - 8;
-                    const color = new THREE.Color();
+                    const color = new THREE.Color(); // THREE is available
                     color.setHSL(Math.random() * 0.1 + 0.58, 0.9, Math.random() * 0.35 + 0.6);
                     colors[i * 3 + 0] = color.r; colors[i * 3 + 1] = color.g; colors[i * 3 + 2] = color.b;
                 }
-                const geometry = new THREE.BufferGeometry();
+                const geometry = new THREE.BufferGeometry(); // THREE is available
                 geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
                 geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-                const material = new THREE.PointsMaterial({
+                const material = new THREE.PointsMaterial({ // THREE is available
                     size: 0.07, map: starTexture, vertexColors: true,
-                    transparent: true, blending: THREE.AdditiveBlending,
+                    transparent: true, blending: THREE.AdditiveBlending, // THREE is available
                     sizeAttenuation: true, depthWrite: false, opacity: 0.85
                 });
-                const points = new THREE.Points(geometry, material);
+                const points = new THREE.Points(geometry, material); // THREE is available
                 anchor.group.add(points);
                 currentVisual = {
                     mesh: points, type: 'starfield',
@@ -312,13 +329,13 @@
                     positions[i * 3 + 2] = (Math.random() - 0.5) * 15 - 10;
                     cloudInstanceData.push({ driftX: (Math.random() - 0.5) * 0.008, driftZ: (Math.random() - 0.5) * 0.003 });
                 }
-                const geometry = new THREE.BufferGeometry();
+                const geometry = new THREE.BufferGeometry(); // THREE is available
                 geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-                const material = new THREE.PointsMaterial({
+                const material = new THREE.PointsMaterial({ // THREE is available
                     size: 8.0, map: cloudTexture, transparent: true, opacity: 0.20,
-                    blending: THREE.NormalBlending, depthWrite: false, color: 0xf0f8ff
+                    blending: THREE.NormalBlending, depthWrite: false, color: 0xf0f8ff // THREE is available
                 });
-                const points = new THREE.Points(geometry, material);
+                const points = new THREE.Points(geometry, material); // THREE is available
                 anchor.group.add(points);
                 currentVisual = {
                     mesh: points, type: 'clouds', data: cloudInstanceData,
@@ -359,18 +376,18 @@
                 }`;
 
             function createFlowingWater() {
-                const geometry = new THREE.PlaneGeometry(15, 15, 40, 40);
-                const material = new THREE.ShaderMaterial({
+                const geometry = new THREE.PlaneGeometry(15, 15, 40, 40); // THREE is available
+                const material = new THREE.ShaderMaterial({ // THREE is available
                     vertexShader: waterVertexShader, fragmentShader: waterFragmentShader,
                     uniforms: {
                         uTime: { value: 0.0 }, uFrequency: { value: 2.5 }, uAmplitude: { value: 0.2 },
-                        uWaterColorDeep: { value: new THREE.Color(0x001e42) },
-                        uWaterColorSurface: { value: new THREE.Color(0x30a0f0) },
+                        uWaterColorDeep: { value: new THREE.Color(0x001e42) }, // THREE is available
+                        uWaterColorSurface: { value: new THREE.Color(0x30a0f0) }, // THREE is available
                         uOpacity: { value: 0.65 }
                     },
-                    transparent: true, depthWrite: false, side: THREE.DoubleSide
+                    transparent: true, depthWrite: false, side: THREE.DoubleSide // THREE is available
                 });
-                const waterMesh = new THREE.Mesh(geometry, material);
+                const waterMesh = new THREE.Mesh(geometry, material); // THREE is available
                 waterMesh.position.y = 4; waterMesh.rotation.x = -Math.PI / 2.8;
                 anchor.group.add(waterMesh);
                 currentVisual = {
@@ -393,17 +410,17 @@
                     positions[i * 3 + 1] = Math.random() * 5 + 1;
                     positions[i * 3 + 2] = (Math.random() - 0.5) * 12 - 3;
                     fireflyInstanceData.push({
-                        velocity: new THREE.Vector3((Math.random()-0.5)*0.01, (Math.random()-0.5)*0.005, (Math.random()-0.5)*0.01),
+                        velocity: new THREE.Vector3((Math.random()-0.5)*0.01, (Math.random()-0.5)*0.005, (Math.random()-0.5)*0.01), // THREE is available
                         blinkOffset: Math.random() * Math.PI * 2, targetY: positions[i * 3 + 1]
                     });
                 }
-                const geometry = new THREE.BufferGeometry();
+                const geometry = new THREE.BufferGeometry(); // THREE is available
                 geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-                const material = new THREE.PointsMaterial({
+                const material = new THREE.PointsMaterial({ // THREE is available
                     size: 0.22, map: fireflyTexture, color: 0xffffaa,
-                    transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0.9
+                    transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0.9 // THREE is available
                 });
-                const points = new THREE.Points(geometry, material);
+                const points = new THREE.Points(geometry, material); // THREE is available
                 anchor.group.add(points);
                 currentVisual = {
                     mesh: points, type: 'fireflies', data: fireflyInstanceData,
@@ -418,7 +435,7 @@
                             posAttr.array[i * 3 + 2] += ff.velocity.z * (1 + audioLevel*0.5) * (delta*60);
                             ff.velocity.y += (ff.targetY - posAttr.array[i * 3 + 1]) * 0.0005;
                             ff.velocity.multiplyScalar(0.98);
-                            if (Math.random() < 0.02) ff.velocity.add(new THREE.Vector3((Math.random()-0.5)*0.005, (Math.random()-0.5)*0.003, (Math.random()-0.5)*0.005));
+                            if (Math.random() < 0.02) ff.velocity.add(new THREE.Vector3((Math.random()-0.5)*0.005, (Math.random()-0.5)*0.003, (Math.random()-0.5)*0.005)); // THREE is available
                             if (Math.abs(posAttr.array[i*3+0]) > 7) ff.velocity.x *= -0.9;
                             if (posAttr.array[i*3+1] < 0.5 || posAttr.array[i*3+1] > 7) ff.velocity.y *= -0.9;
                             if (Math.abs(posAttr.array[i*3+2]) > 7) ff.velocity.z *= -0.9;
@@ -431,24 +448,22 @@
                 };
             }
 
-            // --- Application Startup Logic ---
             const beginARExperience = () => {
                 if (startExperienceUI) startExperienceUI.style.display = 'none';
                 if (loadingMessage) {
-                    loadingMessage.innerHTML = "Loading AR assets..."; // Initial message after start
+                    loadingMessage.innerHTML = "Loading AR assets...";
                     loadingMessage.style.display = 'block';
                 }
-                if (controlsDiv) controlsDiv.style.display = 'block'; // Or 'flex' if it's a flex container
+                if (controlsDiv) controlsDiv.style.display = 'block'; // Or 'flex'
 
                 loadAllAssets(() => {
-                    if (typeof MINDAR === 'undefined' || typeof MINDAR.IMAGE === 'undefined' || typeof THREE === 'undefined') {
-                        if(loadingMessage) loadingMessage.innerHTML = "Error: Critical libraries (THREE or MINDAR) not loaded. Check script tags and internet connection.";
-                        console.error("THREE or MINDAR library not loaded. Check script tags in <head>.");
-                        // Optionally, bring back the startExperienceUI or show a persistent error
-                        // if (startExperienceUI) startExperienceUI.style.display = 'block';
+                    // Check if THREE and MindARThree were imported successfully
+                    if (typeof THREE === 'undefined' || typeof MindARThree === 'undefined') {
+                        if(loadingMessage) loadingMessage.innerHTML = "Error: Critical libraries (THREE or MindAR) not loaded. Check importmap and module imports.";
+                        console.error("THREE or MindARThree (module) not loaded.");
                         return;
                     }
-                    initMindAR().catch(err => { // initMindAR contains permission requests
+                    initMindAR().catch(err => {
                          if(loadingMessage) loadingMessage.innerHTML = "Failed to initialize AR. Check console, permissions, and .mind file path.<br><small>" + err.message + "</small>";
                          console.error("Failed to initialize AR:", err);
                     });
